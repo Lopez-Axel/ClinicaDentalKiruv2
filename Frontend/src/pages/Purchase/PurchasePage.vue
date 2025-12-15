@@ -1,11 +1,12 @@
 <template>
   <div class="purchase-page-container">
     <!-- Header Section -->
+    <div class="purchase-header-background">
+      <div class="purchase-header-shape purchase-header-shape-1"></div>
+      <div class="purchase-header-shape purchase-header-shape-2"></div>
+    </div>
+    
     <div class="purchase-page-header">
-      <div class="purchase-header-background">
-        <div class="purchase-header-shape purchase-header-shape-1"></div>
-        <div class="purchase-header-shape purchase-header-shape-2"></div>
-      </div>
       <div class="purchase-header-content">
         <div class="purchase-title-section">
           <div class="purchase-icon-wrapper">
@@ -13,26 +14,16 @@
           </div>
           <div>
             <h1 class="purchase-page-title">Gestión de Pagos</h1>
-            <p class="purchase-page-subtitle">Administra los pagos y transacciones del sistema dental</p>
+            <p class="purchase-page-subtitle">Control de pagos por tratamientos dentales</p>
           </div>
         </div>
         
         <div class="purchase-header-actions">
           <q-btn
-            class="purchase-primary-btn"
-            icon="fa-solid fa-plus"
-            label="Registrar Pago"
-            @click="abrirDialogoPago"
-            unelevated
-            no-caps
-            size="md"
-          />
-          
-          <q-btn
             class="purchase-secondary-btn"
-            icon="fa-solid fa-download"
-            label="Exportar"
-            @click="exportarDatos"
+            icon="fa-solid fa-file-pdf"
+            label="Reporte Global PDF"
+            @click="generarReporteGlobal"
             outline
             no-caps
             size="md"
@@ -41,192 +32,215 @@
       </div>
     </div>
 
-    <!-- Search & Filters Section -->
+    <!-- Búsqueda de Paciente -->
     <div class="purchase-search-section">
       <div class="purchase-search-container">
-        <q-input
-          v-model="filtros.busqueda"
-          class="purchase-search-input"
-          outlined
-          type="search"
-          placeholder="Buscar por paciente, concepto..."
-          clearable
-        >
-          <template v-slot:prepend>
-            <i class="fa-solid fa-search purchase-search-icon"></i>
-          </template>
-        </q-input>
-        
-        <div class="purchase-filter-group">
+        <div style="flex: 1;">
           <q-select
-            v-model="filtros.estado"
-            :options="opcionesEstado"
-            label="Estado"
+            v-model="pacienteSeleccionado"
+            :options="opcionesPacientes"
+            label="Seleccionar Paciente"
             outlined
-            dense
+            use-input
+            input-debounce="300"
+            @filter="filtrarPacientes"
+            @update:model-value="seleccionarPaciente"
             clearable
+            option-value="ci"
+            option-label="label"
             emit-value
             map-options
-            class="purchase-filter-select"
-          />
-          
-          <q-select
-            v-model="filtros.metodoPago"
-            :options="opcionesMetodoPago"
-            label="Método de Pago"
-            outlined
-            dense
-            clearable
-            emit-value
-            map-options
-            class="purchase-filter-select"
-          />
-          
-          <q-input
-            v-model="filtros.fechaInicio"
-            type="date"
-            label="Fecha Inicio"
-            outlined
-            dense
-            class="purchase-filter-select"
-          />
-          
-          <q-input
-            v-model="filtros.fechaFin"
-            type="date"
-            label="Fecha Fin"
-            outlined
-            dense
-            class="purchase-filter-select"
-          />
+            class="purchase-search-input"
+            :loading="pacienteStore.loading"
+          >
+            <template v-slot:prepend>
+              <i class="fa-solid fa-user-injured"></i>
+            </template>
+
+            <template v-slot:no-option>
+              <q-item>
+                <q-item-section class="text-grey">
+                  No se encontraron pacientes
+                </q-item-section>
+              </q-item>
+            </template>
+
+            <template v-slot:option="scope">
+              <q-item v-bind="scope.itemProps">
+                <q-item-section avatar>
+                  <q-avatar color="primary" text-color="white" size="md">
+                    <i class="fa-solid fa-user"></i>
+                  </q-avatar>
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>{{ scope.opt.nombre }}</q-item-label>
+                  <q-item-label caption>CI: {{ scope.opt.ci }}</q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+
+            <template v-slot:selected-item="scope">
+              <div class="selected-patient-chip">
+                <q-avatar color="primary" text-color="white" size="sm">
+                  <i class="fa-solid fa-user"></i>
+                </q-avatar>
+                <span class="q-ml-sm">{{ scope.opt.nombre }} (CI: {{ scope.opt.ci }})</span>
+              </div>
+            </template>
+          </q-select>
         </div>
       </div>
     </div>
 
+    <!-- Información del Paciente Seleccionado -->
+    <div v-if="pacienteActual" class="purchase-patient-info">
+      <div class="patient-info-card">
+        <div class="patient-avatar">
+          <i class="fa-solid fa-user-circle"></i>
+        </div>
+        <div class="patient-details">
+          <h3 class="patient-name">{{ nombreCompletoPaciente }}</h3>
+          <p class="patient-ci">CI: {{ pacienteActual.ci }}</p>
+        </div>
+        <q-btn
+          flat
+          round
+          dense
+          icon="close"
+          @click="limpiarPaciente"
+          color="grey-7"
+        >
+          <q-tooltip>Limpiar selección</q-tooltip>
+        </q-btn>
+      </div>
+    </div>
+
     <!-- Stats Section -->
-    <div class="purchase-stats-section">
+    <div v-if="pacienteActual" class="purchase-stats-section">
       <div class="purchase-stat-card">
         <div class="purchase-stat-icon-container total">
-          <i class="fa-solid fa-coins"></i>
+          <i class="fa-solid fa-tooth"></i>
         </div>
         <div class="purchase-stat-content">
-          <div class="purchase-stat-value">Bs. {{ formatearMonto(resumenPagos.total) }}</div>
-          <div class="purchase-stat-label">Total Recaudado</div>
+          <div class="purchase-stat-value">{{ odontogramStore.piezas.length }}</div>
+          <div class="purchase-stat-label">Piezas en Tratamiento</div>
         </div>
         <div class="purchase-stat-glow total"></div>
       </div>
 
       <div class="purchase-stat-card">
         <div class="purchase-stat-icon-container pending">
-          <i class="fa-solid fa-clock"></i>
+          <i class="fa-solid fa-dollar-sign"></i>
         </div>
         <div class="purchase-stat-content">
-          <div class="purchase-stat-value">Bs. {{ formatearMonto(resumenPagos.pendiente) }}</div>
-          <div class="purchase-stat-label">Pagos Pendientes</div>
+          <div class="purchase-stat-value">Bs. {{ formatearMonto(odontogramStore.precioTotal) }}</div>
+          <div class="purchase-stat-label">Costo Total Tratamiento</div>
         </div>
         <div class="purchase-stat-glow pending"></div>
       </div>
 
       <div class="purchase-stat-card">
         <div class="purchase-stat-icon-container month">
-          <i class="fa-solid fa-calendar-alt"></i>
+          <i class="fa-solid fa-check-circle"></i>
         </div>
         <div class="purchase-stat-content">
-          <div class="purchase-stat-value">Bs. {{ formatearMonto(resumenPagos.mesActual) }}</div>
-          <div class="purchase-stat-label">Este Mes</div>
+          <div class="purchase-stat-value">Bs. {{ formatearMonto(pagoStore.totalPagado) }}</div>
+          <div class="purchase-stat-label">Total Pagado</div>
         </div>
         <div class="purchase-stat-glow month"></div>
       </div>
 
       <div class="purchase-stat-card">
         <div class="purchase-stat-icon-container average">
-          <i class="fa-solid fa-chart-line"></i>
+          <i class="fa-solid fa-clock"></i>
         </div>
         <div class="purchase-stat-content">
-          <div class="purchase-stat-value">Bs. {{ formatearMonto(resumenPagos.promedio) }}</div>
-          <div class="purchase-stat-label">Promedio por Pago</div>
+          <div class="purchase-stat-value">Bs. {{ formatearMonto(pagoStore.totalPendiente) }}</div>
+          <div class="purchase-stat-label">Saldo Pendiente</div>
         </div>
         <div class="purchase-stat-glow average"></div>
       </div>
     </div>
 
-    <!-- Table Section -->
-    <div class="purchase-table-container">
+    <!-- Tabla de Piezas con Pagos -->
+    <div v-if="pacienteActual" class="purchase-table-container">
       <div class="purchase-table-header">
         <div class="purchase-table-title-section">
-          <h3 class="purchase-table-title">Lista de Pagos</h3>
+          <h3 class="purchase-table-title">Piezas Dentales y Pagos</h3>
           <div class="purchase-table-underline"></div>
         </div>
         <div class="purchase-table-actions">
           <div class="purchase-results-count">
             <span class="purchase-count-badge">
-              <i class="fa-solid fa-receipt"></i>
-              {{ pagosFiltrados.length }} pago{{ pagosFiltrados.length !== 1 ? 's' : '' }}
+              <i class="fa-solid fa-tooth"></i>
+              {{ odontogramStore.piezas.length }} pieza{{ odontogramStore.piezas.length !== 1 ? 's' : '' }}
             </span>
           </div>
-          <q-btn
-            class="purchase-report-btn"
-            flat
-            icon="fa-solid fa-file-pdf"
-            label="Reporte PDF"
-            no-caps
-            size="sm"
-            @click="generarReportePDF"
-          />
         </div>
       </div>
 
       <q-table
         class="purchase-data-table"
         flat
-        :rows="pagosFiltrados"
-        :columns="columnasPagos"
+        :rows="odontogramStore.piezas"
+        :columns="columnasPiezas"
         row-key="id"
-        :rows-per-page-options="[5, 10, 15, 20]"
+        :rows-per-page-options="[10, 20, 50]"
         :pagination="{ rowsPerPage: 10 }"
         separator="cell"
-        :loading="cargando"
+        :loading="odontogramStore.loading"
       >
         <template v-slot:no-data>
           <div class="purchase-no-data-container">
             <div class="purchase-no-data-illustration">
-              <i class="fa-solid fa-receipt purchase-no-data-icon"></i>
-              <div class="purchase-no-data-circle purchase-no-data-circle-1"></div>
-              <div class="purchase-no-data-circle purchase-no-data-circle-2"></div>
+              <i class="fa-solid fa-tooth purchase-no-data-icon"></i>
             </div>
-            <p class="purchase-no-data-text">No se encontraron pagos registrados</p>
-            <p class="purchase-no-data-subtext">Intenta ajustar los filtros de búsqueda o registra el primer pago</p>
-            <q-btn
-              class="purchase-primary-btn"
-              label="Registrar Primer Pago"
-              @click="abrirDialogoPago"
-              unelevated
-              no-caps
-              style="margin-top: 16px;"
-            />
+            <p class="purchase-no-data-text">No hay piezas en tratamiento</p>
+            <p class="purchase-no-data-subtext">Este paciente no tiene piezas dentales registradas</p>
           </div>
         </template>
 
-        <template v-slot:body-cell-estado="props">
+        <template v-slot:body-cell-numero="props">
           <q-td :props="props">
-            <div class="purchase-status-badge" :class="getEstadoClass(props.value)">
-              <i :class="getEstadoIcon(props.value)"></i>
-              {{ formatearEstado(props.value) }}
+            <div class="tooth-number-badge">
+              <i class="fa-solid fa-tooth"></i>
+              {{ props.value }}
             </div>
           </q-td>
         </template>
 
-        <template v-slot:body-cell-monto="props">
+        <template v-slot:body-cell-precio="props">
           <q-td :props="props">
             <span class="purchase-amount-cell">Bs. {{ formatearMonto(props.value) }}</span>
           </q-td>
         </template>
 
-        <template v-slot:body-cell-metodoPago="props">
+        <template v-slot:body-cell-total_pagado="props">
           <q-td :props="props">
-            <div class="purchase-method-badge">
-              <i :class="getMetodoIcon(props.value)"></i>
-              {{ formatearMetodoPago(props.value) }}
+            <span class="purchase-amount-cell text-positive">
+              Bs. {{ formatearMonto(calcularTotalesPieza(props.row).total_pagado) }}
+            </span>
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-total_pendiente="props">
+          <q-td :props="props">
+            <span class="purchase-amount-cell text-warning">
+              Bs. {{ formatearMonto(calcularTotalesPieza(props.row).total_pendiente) }}
+            </span>
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-progreso="props">
+          <q-td :props="props">
+            <div class="progress-container">
+              <q-linear-progress
+                :value="calcularTotalesPieza(props.row).porcentaje_pagado / 100"
+                :color="getColorProgreso(calcularTotalesPieza(props.row).porcentaje_pagado)"
+                size="8px"
+                rounded
+              />
+              <span class="progress-label">{{ calcularTotalesPieza(props.row).porcentaje_pagado }}%</span>
             </div>
           </q-td>
         </template>
@@ -239,12 +253,12 @@
                 flat
                 dense
                 round
-                icon="fa-solid fa-eye"
+                icon="fa-solid fa-history"
                 size="sm"
-                @click="verDetallePago(props.row)"
+                @click="verHistorialPagos(props.row)"
                 color="grey-8"
               >
-                <q-tooltip>Ver detalles</q-tooltip>
+                <q-tooltip>Ver historial</q-tooltip>
               </q-btn>
               
               <q-btn
@@ -252,25 +266,13 @@
                 flat
                 dense
                 round
-                icon="fa-solid fa-edit"
+                icon="fa-solid fa-plus-circle"
                 size="sm"
-                @click="editarPago(props.row)"
+                @click="abrirDialogoPago(props.row)"
                 color="primary"
+                :disable="calcularTotalesPieza(props.row).total_pendiente <= 0"
               >
-                <q-tooltip>Editar</q-tooltip>
-              </q-btn>
-              
-              <q-btn
-                class="purchase-action-btn purchase-receipt-btn"
-                flat
-                dense
-                round
-                icon="fa-solid fa-receipt"
-                size="sm"
-                @click="generarRecibo(props.row)"
-                color="secondary"
-              >
-                <q-tooltip>Generar recibo</q-tooltip>
+                <q-tooltip>Registrar pago</q-tooltip>
               </q-btn>
             </div>
           </q-td>
@@ -278,198 +280,168 @@
       </q-table>
     </div>
 
-    <!-- Dialogs -->
-    <!-- Dialog para Nuevo/Editar Pago -->
+    <!-- Estado Sin Paciente -->
+    <div v-else class="purchase-no-patient">
+      <div class="purchase-empty-state">
+        <div class="purchase-empty-illustration">
+          <i class="fa-solid fa-user-injured purchase-empty-icon"></i>
+          <div class="purchase-empty-circle purchase-empty-circle-1"></div>
+          <div class="purchase-empty-circle purchase-empty-circle-2"></div>
+        </div>
+        <h3 class="purchase-empty-title">Selecciona un paciente</h3>
+        <p class="purchase-empty-description">
+          Selecciona un paciente del listado para ver sus tratamientos y pagos
+        </p>
+      </div>
+    </div>
+
+    <!-- Diálogo: Registrar Pago -->
     <q-dialog v-model="dialogoPago" persistent>
-      <q-card class="purchase-dialog">
+      <q-card class="purchase-dialog-card" style="min-width: 500px;">
         <q-card-section class="purchase-dialog-header">
-          <div class="purchase-dialog-icon-container">
-            <i class="fa-solid fa-credit-card purchase-dialog-icon"></i>
+          <div class="purchase-dialog-title-wrapper">
+            <i class="fa-solid fa-money-bill-wave purchase-dialog-icon"></i>
+            <h6 class="purchase-dialog-title">Registrar Pago</h6>
           </div>
-          <h2 class="purchase-dialog-title">
-            {{ editando ? 'Editar Pago' : 'Registrar Nuevo Pago' }}
-          </h2>
+          <q-btn flat round dense icon="close" @click="cerrarDialogoPago" />
         </q-card-section>
 
-        <q-card-section class="purchase-dialog-body">
-          <q-form @submit.prevent="guardarPago" class="purchase-form">
-            <div class="purchase-form-grid">
-              <q-select
-                v-model="formPago.pacienteId"
-                :options="opcionesPacientes"
-                label="Paciente *"
-                outlined
-                emit-value
-                map-options
-                required
-                class="purchase-form-field"
-              />
+        <q-separator />
 
-              <q-input
-                v-model="formPago.concepto"
-                label="Concepto *"
-                outlined
-                required
-                class="purchase-form-field"
-              />
-
-              <q-input
-                v-model.number="formPago.monto"
-                type="number"
-                label="Monto (Bs.) *"
-                outlined
-                required
-                min="0"
-                step="0.01"
-                class="purchase-form-field"
-              />
-
-              <q-select
-                v-model="formPago.metodoPago"
-                :options="opcionesMetodoPago"
-                label="Método de Pago *"
-                outlined
-                emit-value
-                map-options
-                required
-                class="purchase-form-field"
-              />
-
-              <q-input
-                v-model="formPago.fecha"
-                type="date"
-                label="Fecha *"
-                outlined
-                required
-                class="purchase-form-field"
-              />
-
-              <q-select
-                v-model="formPago.estado"
-                :options="opcionesEstado"
-                label="Estado *"
-                outlined
-                emit-value
-                map-options
-                required
-                class="purchase-form-field"
-              />
-
-              <q-input
-                v-model="formPago.numeroTransaccion"
-                label="Número de Transacción"
-                outlined
-                hint="Solo para pagos con tarjeta o transferencia"
-                class="purchase-form-field"
-              />
-
-              <q-input
-                v-model="formPago.observaciones"
-                label="Observaciones"
-                outlined
-                type="textarea"
-                rows="3"
-                class="purchase-form-field purchase-form-textarea"
-              />
+        <q-card-section class="purchase-dialog-content">
+          <!-- Info Pieza -->
+          <div v-if="piezaSeleccionada" class="payment-piece-info">
+            <div class="piece-info-row">
+              <span class="piece-info-label">Pieza Dental:</span>
+              <span class="piece-info-value">
+                <i class="fa-solid fa-tooth"></i> {{ piezaSeleccionada.numero }}
+              </span>
             </div>
+            <div class="piece-info-row">
+              <span class="piece-info-label">Diagnóstico:</span>
+              <span class="piece-info-value">{{ piezaSeleccionada.diagnostico || 'Sin diagnóstico' }}</span>
+            </div>
+            <div class="piece-info-row">
+              <span class="piece-info-label">Precio Total:</span>
+              <span class="piece-info-value text-bold">Bs. {{ formatearMonto(piezaSeleccionada.precio) }}</span>
+            </div>
+            <div class="piece-info-row">
+              <span class="piece-info-label">Ya Pagado:</span>
+              <span class="piece-info-value text-positive">Bs. {{ formatearMonto(totalesPiezaActual.total_pagado) }}</span>
+            </div>
+            <div class="piece-info-row highlight">
+              <span class="piece-info-label">Saldo Pendiente:</span>
+              <span class="piece-info-value text-warning text-bold">Bs. {{ formatearMonto(totalesPiezaActual.total_pendiente) }}</span>
+            </div>
+          </div>
+
+          <q-separator spaced />
+
+          <!-- Formulario -->
+          <q-form @submit="guardarPago" class="purchase-form">
+            <q-input
+              v-model.number="formPago.monto"
+              label="Monto a Pagar *"
+              type="number"
+              step="0.01"
+              min="0.01"
+              :max="totalesPiezaActual.total_pendiente"
+              outlined
+              :rules="[
+                val => val > 0 || 'El monto debe ser mayor a 0',
+                val => val <= totalesPiezaActual.total_pendiente || 'El monto excede el saldo pendiente'
+              ]"
+              prefix="Bs."
+            />
+
+            <q-select
+              v-model="formPago.tipo_pago"
+              :options="opcionesMetodoPago"
+              label="Método de Pago *"
+              outlined
+              emit-value
+              map-options
+            />
+
+            <q-input
+              v-model="formPago.notas"
+              label="Notas (opcional)"
+              type="textarea"
+              outlined
+              rows="3"
+            />
           </q-form>
         </q-card-section>
 
-        <q-card-actions align="right" class="purchase-dialog-actions">
-          <q-btn 
-            flat 
-            label="Cancelar" 
+        <q-separator />
+
+        <q-card-actions class="purchase-dialog-actions">
+          <q-btn
+            flat
+            label="Cancelar"
             @click="cerrarDialogoPago"
-            class="purchase-dialog-btn purchase-dialog-cancel"
             no-caps
+            class="purchase-cancel-btn"
           />
-          <q-btn 
-            :label="editando ? 'Actualizar' : 'Guardar'" 
-            @click="guardarPago"
-            class="purchase-dialog-btn purchase-dialog-confirm"
+          <q-btn
             unelevated
+            label="Registrar Pago"
+            @click="guardarPago"
             :loading="guardando"
             no-caps
+            class="purchase-primary-btn"
           />
         </q-card-actions>
       </q-card>
     </q-dialog>
 
-    <!-- Dialog para Detalle del Pago -->
-    <q-dialog v-model="dialogoDetalle">
-      <q-card class="purchase-detail-dialog">
+    <!-- Diálogo: Historial de Pagos -->
+    <q-dialog v-model="dialogoHistorial">
+      <q-card class="purchase-dialog-card" style="min-width: 700px;">
         <q-card-section class="purchase-dialog-header">
-          <div class="purchase-dialog-icon-container success">
-            <i class="fa-solid fa-receipt purchase-dialog-icon"></i>
+          <div class="purchase-dialog-title-wrapper">
+            <i class="fa-solid fa-history purchase-dialog-icon"></i>
+            <h6 class="purchase-dialog-title">Historial de Pagos - Pieza {{ piezaSeleccionada?.numero }}</h6>
           </div>
-          <h2 class="purchase-dialog-title">Detalle del Pago</h2>
-          <q-btn
-            flat
-            round
-            dense
-            icon="fa-solid fa-times"
-            @click="dialogoDetalle = false"
-            class="purchase-close-btn"
-          />
+          <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
 
-        <q-card-section v-if="pagoSeleccionado" class="purchase-detail-body">
-          <div class="purchase-detail-grid">
-            <div class="purchase-detail-item">
-              <span class="purchase-detail-label">ID:</span>
-              <span class="purchase-detail-value">{{ pagoSeleccionado.id }}</span>
-            </div>
-            
-            <div class="purchase-detail-item">
-              <span class="purchase-detail-label">Paciente:</span>
-              <span class="purchase-detail-value">{{ pagoSeleccionado.paciente }}</span>
-            </div>
-            
-            <div class="purchase-detail-item">
-              <span class="purchase-detail-label">Concepto:</span>
-              <span class="purchase-detail-value">{{ pagoSeleccionado.concepto }}</span>
-            </div>
-            
-            <div class="purchase-detail-item">
-              <span class="purchase-detail-label">Monto:</span>
-              <span class="purchase-detail-value purchase-amount-highlight">Bs. {{ formatearMonto(pagoSeleccionado.monto) }}</span>
-            </div>
-            
-            <div class="purchase-detail-item">
-              <span class="purchase-detail-label">Fecha:</span>
-              <span class="purchase-detail-value">{{ formatearFecha(pagoSeleccionado.fecha) }}</span>
-            </div>
-            
-            <div class="purchase-detail-item">
-              <span class="purchase-detail-label">Método de Pago:</span>
-              <span class="purchase-detail-value">
+        <q-separator />
+
+        <q-card-section class="purchase-dialog-content">
+          <q-table
+            :rows="pagosHistorial"
+            :columns="columnasHistorial"
+            row-key="id"
+            flat
+            dense
+            :rows-per-page-options="[5, 10]"
+            :pagination="{ rowsPerPage: 5 }"
+          >
+            <template v-slot:body-cell-monto="props">
+              <q-td :props="props">
+                <span class="purchase-amount-cell">Bs. {{ formatearMonto(props.value) }}</span>
+              </q-td>
+            </template>
+
+            <template v-slot:body-cell-estado="props">
+              <q-td :props="props">
+                <div class="purchase-status-badge" :class="getEstadoClass(props.value)">
+                  <i :class="getEstadoIcon(props.value)"></i>
+                  {{ formatearEstado(props.value) }}
+                </div>
+              </q-td>
+            </template>
+
+            <template v-slot:body-cell-tipo_pago="props">
+              <q-td :props="props">
                 <div class="purchase-method-badge">
-                  <i :class="getMetodoIcon(pagoSeleccionado.metodoPago)"></i>
-                  {{ formatearMetodoPago(pagoSeleccionado.metodoPago) }}
+                  <i :class="getMetodoIcon(props.value)"></i>
+                  {{ formatearMetodoPago(props.value) }}
                 </div>
-              </span>
-            </div>
-            
-            <div class="purchase-detail-item">
-              <span class="purchase-detail-label">Estado:</span>
-              <span class="purchase-detail-value">
-                <div class="purchase-status-badge" :class="getEstadoClass(pagoSeleccionado.estado)">
-                  <i :class="getEstadoIcon(pagoSeleccionado.estado)"></i>
-                  {{ formatearEstado(pagoSeleccionado.estado) }}
-                </div>
-              </span>
-            </div>
-            
-            <div class="purchase-detail-item" v-if="pagoSeleccionado.numeroTransaccion">
-              <span class="purchase-detail-label">N° Transacción:</span>
-              <span class="purchase-detail-value purchase-transaction-code">{{ pagoSeleccionado.numeroTransaccion }}</span>
-            </div>
-            
-            <div class="purchase-detail-item purchase-detail-observations" v-if="pagoSeleccionado.observaciones">
-              <span class="purchase-detail-label">Observaciones:</span>
-              <span class="purchase-detail-value">{{ pagoSeleccionado.observaciones }}</span>
-            </div>
-          </div>
+              </q-td>
+            </template>
+          </q-table>
         </q-card-section>
       </q-card>
     </q-dialog>
@@ -479,134 +451,114 @@
 <script>
 import { ref, computed, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
-import pacientesData from '../../data/pacientes.json'
+import { useOdontogramStore } from 'src/stores/odontogramStore'
+import { usePagoStore } from 'src/stores/pagoStore'
+import { usePacienteStore } from 'src/stores/pacienteStore'
+import { generarReportePagosGlobal } from '../../utils/reportePagoPDF'
 
 export default {
-  name: 'PagosPage',
+  name: 'PurchasePage',
   setup() {
     const $q = useQuasar()
-    
-    // Estados reactivos
-    const cargando = ref(false)
-    const guardando = ref(false)
+    const odontogramStore = useOdontogramStore()
+    const pagoStore = usePagoStore()
+    const pacienteStore = usePacienteStore()
+
+    // ============================================
+    // STATE
+    // ============================================
+    const pacienteSeleccionado = ref(null)
+    const pacienteActual = ref(null)
+    const opcionesPacientesFiltradas = ref([])
     const dialogoPago = ref(false)
-    const dialogoDetalle = ref(false)
-    const editando = ref(false)
-    const pagoSeleccionado = ref(null)
-    
-    // Filtros
-    const filtros = ref({
-      busqueda: '',
-      estado: null,
-      metodoPago: null,
-      fechaInicio: '',
-      fechaFin: ''
-    })
-    
-    // Datos de ejemplo basados en los pacientes reales
-    const pagos = ref([
-      {
-        id: 1,
-        paciente: `${pacientesData.pacientes[0]?.nombre} ${pacientesData.pacientes[0]?.apellidoPaterno}`,
-        pacienteId: 1,
-        concepto: 'Limpieza dental',
-        monto: 150.00,
-        fecha: '2025-11-10',
-        metodoPago: 'efectivo',
-        estado: 'completado',
-        numeroTransaccion: null,
-        observaciones: 'Pago completo'
-      },
-      {
-        id: 2,
-        paciente: `${pacientesData.pacientes[1]?.nombre} ${pacientesData.pacientes[1]?.apellidoPaterno}`,
-        pacienteId: 2,
-        concepto: 'Ortodoncia - Cuota 1',
-        monto: 500.00,
-        fecha: '2025-11-09',
-        metodoPago: 'tarjeta',
-        estado: 'completado',
-        numeroTransaccion: 'TX123456789',
-        observaciones: 'Primera cuota de tratamiento'
-      },
-      {
-        id: 3,
-        paciente: `${pacientesData.pacientes[2]?.nombre} ${pacientesData.pacientes[2]?.apellidoPaterno}`,
-        pacienteId: 3,
-        concepto: 'Extracción dental',
-        monto: 200.00,
-        fecha: '2025-11-08',
-        metodoPago: 'transferencia',
-        estado: 'pendiente',
-        numeroTransaccion: 'TR987654321',
-        observaciones: 'Pendiente de confirmación'
-      }
-    ])
-    
-    // Formulario de pago
+    const dialogoHistorial = ref(false)
+    const guardando = ref(false)
+    const piezaSeleccionada = ref(null)
+    const pagosHistorial = ref([])
+
     const formPagoInicial = {
-      pacienteId: null,
-      concepto: '',
       monto: 0,
-      metodoPago: 'efectivo',
-      fecha: new Date().toISOString().split('T')[0],
-      estado: 'completado',
-      numeroTransaccion: '',
-      observaciones: ''
+      tipo_pago: 'efectivo',
+      notas: ''
     }
-    
     const formPago = ref({ ...formPagoInicial })
-    
-    // Opciones para los selects
-    const opcionesEstado = [
-      { label: 'Completado', value: 'completado' },
-      { label: 'Pendiente', value: 'pendiente' },
-      { label: 'Cancelado', value: 'cancelado' }
-    ]
-    
+
+    // ============================================
+    // OPCIONES
+    // ============================================
     const opcionesMetodoPago = [
       { label: 'Efectivo', value: 'efectivo' },
-      { label: 'Tarjeta', value: 'tarjeta' },
       { label: 'Transferencia', value: 'transferencia' },
       { label: 'QR', value: 'qr' }
     ]
-    
-    const opcionesPacientes = computed(() => 
-      pacientesData.pacientes.map(p => ({
-        label: `${p.nombre} ${p.apellidoPaterno} ${p.apellidoMaterno}`,
-        value: p.id
+
+    // Opciones de pacientes para el select
+    const opcionesPacientes = computed(() => {
+      return pacienteStore.pacientesFiltrados.map(paciente => ({
+        label: `${paciente.nombre} ${paciente.apellido_paterno} ${paciente.apellido_materno || ''}`,
+        nombre: `${paciente.nombre} ${paciente.apellido_paterno} ${paciente.apellido_materno || ''}`,
+        ci: paciente.ci,
+        value: paciente.ci,
+        ...paciente
       }))
-    )
-    
-    // Configuración de la tabla
-    const paginacion = ref({
-      page: 1,
-      rowsPerPage: 10,
-      rowsNumber: 0
     })
-    
-    const columnasPagos = [
+
+    // ============================================
+    // COLUMNAS TABLAS
+    // ============================================
+    const columnasPiezas = [
       {
-        name: 'id',
+        name: 'numero',
         required: true,
-        label: 'ID',
-        align: 'left',
-        field: 'id',
-        sortable: true,
-        style: 'width: 80px'
-      },
-      {
-        name: 'paciente',
-        required: true,
-        label: 'Paciente',
-        align: 'left',
-        field: 'paciente',
+        label: 'Pieza',
+        align: 'center',
+        field: 'numero',
         sortable: true
       },
       {
-        name: 'concepto',
-        label: 'Concepto',
-        field: 'concepto',
+        name: 'diagnostico',
+        label: 'Diagnóstico',
+        field: 'diagnostico',
+        align: 'left',
+        sortable: true
+      },
+      {
+        name: 'precio',
+        label: 'Precio Total',
+        field: 'precio',
+        align: 'right',
+        sortable: true
+      },
+      {
+        name: 'total_pagado',
+        label: 'Pagado',
+        align: 'right',
+        sortable: true
+      },
+      {
+        name: 'total_pendiente',
+        label: 'Pendiente',
+        align: 'right',
+        sortable: true
+      },
+      {
+        name: 'progreso',
+        label: 'Progreso',
+        align: 'center'
+      },
+      {
+        name: 'acciones',
+        label: 'Acciones',
+        align: 'center'
+      }
+    ]
+
+    const columnasHistorial = [
+      {
+        name: 'created_at',
+        label: 'Fecha',
+        field: 'created_at',
+        format: val => formatearFecha(val),
         sortable: true,
         align: 'left'
       },
@@ -614,113 +566,247 @@ export default {
         name: 'monto',
         label: 'Monto',
         field: 'monto',
-        sortable: true,
-        align: 'right',
-        style: 'width: 120px'
+        align: 'right'
       },
       {
-        name: 'fecha',
-        label: 'Fecha',
-        field: 'fecha',
-        sortable: true,
-        align: 'center',
-        style: 'width: 120px'
-      },
-      {
-        name: 'metodoPago',
+        name: 'tipo_pago',
         label: 'Método',
-        field: 'metodoPago',
-        sortable: true,
-        align: 'center',
-        style: 'width: 120px'
+        field: 'tipo_pago',
+        align: 'center'
       },
       {
         name: 'estado',
         label: 'Estado',
         field: 'estado',
-        sortable: true,
-        align: 'center',
-        style: 'width: 120px'
+        align: 'center'
       },
       {
-        name: 'acciones',
-        label: 'Acciones',
-        field: 'acciones',
-        align: 'center',
-        style: 'width: 150px'
+        name: 'notas',
+        label: 'Notas',
+        field: 'notas',
+        align: 'left'
       }
     ]
-    
-    // Computed properties
-    const pagosFiltrados = computed(() => {
-      let resultado = pagos.value
-      
-      if (filtros.value.busqueda) {
-        const busqueda = filtros.value.busqueda.toLowerCase()
-        resultado = resultado.filter(pago =>
-          pago.paciente.toLowerCase().includes(busqueda) ||
-          pago.concepto.toLowerCase().includes(busqueda)
-        )
-      }
-      
-      if (filtros.value.estado) {
-        resultado = resultado.filter(pago => pago.estado === filtros.value.estado)
-      }
-      
-      if (filtros.value.metodoPago) {
-        resultado = resultado.filter(pago => pago.metodoPago === filtros.value.metodoPago)
-      }
-      
-      if (filtros.value.fechaInicio) {
-        resultado = resultado.filter(pago => pago.fecha >= filtros.value.fechaInicio)
-      }
-      
-      if (filtros.value.fechaFin) {
-        resultado = resultado.filter(pago => pago.fecha <= filtros.value.fechaFin)
-      }
-      
-      return resultado
+
+    // ============================================
+    // COMPUTED
+    // ============================================
+    const nombreCompletoPaciente = computed(() => {
+      if (!pacienteActual.value) return ''
+      return pacienteStore.getNombreCompleto(pacienteActual.value)
     })
-    
-    const resumenPagos = computed(() => {
-      const pagosCompletados = pagos.value.filter(p => p.estado === 'completado')
-      const pagosPendientes = pagos.value.filter(p => p.estado === 'pendiente')
-      
-      const total = pagosCompletados.reduce((sum, pago) => sum + pago.monto, 0)
-      const pendiente = pagosPendientes.reduce((sum, pago) => sum + pago.monto, 0)
-      
-      const fechaActual = new Date()
-      const mesActual = fechaActual.getMonth() + 1
-      const añoActual = fechaActual.getFullYear()
-      
-      const pagosMesActual = pagosCompletados.filter(pago => {
-        const fechaPago = new Date(pago.fecha)
-        return fechaPago.getMonth() + 1 === mesActual && fechaPago.getFullYear() === añoActual
+
+    const totalesPiezaActual = computed(() => {
+      if (!piezaSeleccionada.value) {
+        return { precio_total: 0, total_pagado: 0, total_pendiente: 0, porcentaje_pagado: 0 }
+      }
+      return pagoStore.getTotalesPieza(piezaSeleccionada.value.id, piezaSeleccionada.value.precio)
+    })
+
+    // ============================================
+    // MÉTODOS - BÚSQUEDA Y SELECCIÓN
+    // ============================================
+    const filtrarPacientes = (val, update) => {
+      update(() => {
+        if (val === '') {
+          opcionesPacientesFiltradas.value = opcionesPacientes.value
+        } else {
+          const needle = val.toLowerCase()
+          opcionesPacientesFiltradas.value = opcionesPacientes.value.filter(
+            v => v.label.toLowerCase().indexOf(needle) > -1 || 
+                 v.ci.toLowerCase().indexOf(needle) > -1
+          )
+        }
       })
-      
-      const mesActualTotal = pagosMesActual.reduce((sum, pago) => sum + pago.monto, 0)
-      const promedio = pagosCompletados.length > 0 ? total / pagosCompletados.length : 0
-      
-      return {
-        total,
-        pendiente,
-        mesActual: mesActualTotal,
-        promedio
+    }
+
+    const seleccionarPaciente = async (ci) => {
+      if (!ci) {
+        limpiarPaciente()
+        return
       }
-    })
-    
-    // Métodos de formateo
+
+      try {
+        $q.loading.show({ message: 'Cargando datos del paciente...' })
+
+        // Buscar el paciente completo
+        const paciente = pacienteStore.pacientes.find(p => p.ci === ci)
+        
+        if (!paciente) {
+          $q.notify({
+            type: 'negative',
+            message: 'Paciente no encontrado',
+            position: 'top-right'
+          })
+          return
+        }
+
+        pacienteActual.value = paciente
+
+        // Cargar odontograma y pagos
+        await odontogramStore.cargarOdontogramaPorPaciente(paciente.ci)
+        await pagoStore.cargarPagosPorPaciente(paciente.ci)
+
+        $q.notify({
+          type: 'positive',
+          message: `Datos cargados: ${pacienteStore.getNombreCompleto(paciente)}`,
+          position: 'top-right',
+          icon: 'check_circle'
+        })
+      } catch (error) {
+        console.error('Error seleccionando paciente:', error)
+        $q.notify({
+          type: 'negative',
+          message: 'Error al cargar los datos del paciente',
+          position: 'top-right'
+        })
+      } finally {
+        $q.loading.hide()
+      }
+    }
+
+    const limpiarPaciente = () => {
+      pacienteActual.value = null
+      pacienteSeleccionado.value = null
+      odontogramStore.limpiarOdontograma()
+      pagoStore.limpiarPagos()
+    }
+
+    // ============================================
+    // MÉTODOS - CÁLCULOS
+    // ============================================
+    const calcularTotalesPieza = (pieza) => {
+      return pagoStore.getTotalesPieza(pieza.id, pieza.precio)
+    }
+
+    const getColorProgreso = (porcentaje) => {
+      if (porcentaje >= 100) return 'positive'
+      if (porcentaje >= 50) return 'warning'
+      return 'negative'
+    }
+
+    // ============================================
+    // MÉTODOS - DIÁLOGOS
+    // ============================================
+    const abrirDialogoPago = (pieza) => {
+      piezaSeleccionada.value = pieza
+      formPago.value = { ...formPagoInicial }
+      dialogoPago.value = true
+    }
+
+    const cerrarDialogoPago = () => {
+      dialogoPago.value = false
+      piezaSeleccionada.value = null
+      formPago.value = { ...formPagoInicial }
+    }
+
+    const verHistorialPagos = async (pieza) => {
+      piezaSeleccionada.value = pieza
+      
+      try {
+        pagosHistorial.value = await pagoStore.cargarPagosPorPieza(pieza.id)
+        dialogoHistorial.value = true
+      } catch (error) {
+        $q.notify({
+          type: 'negative',
+          message: 'Error al cargar el historial' + error.message,
+          position: 'top-right'
+        })
+      }
+    }
+
+    const guardarPago = async () => {
+      if (!piezaSeleccionada.value || !formPago.value.monto || formPago.value.monto <= 0) {
+        $q.notify({
+          type: 'warning',
+          message: 'Completa todos los campos requeridos',
+          position: 'top-right'
+        })
+        return
+      }
+
+      guardando.value = true
+      try {
+        await pagoStore.crearPago(
+          {
+            id_pieza: piezaSeleccionada.value.id,
+            ...formPago.value
+          },
+          piezaSeleccionada.value.precio
+        )
+
+        $q.notify({
+          type: 'positive',
+          message: 'Pago registrado exitosamente',
+          position: 'top-right',
+          icon: 'check_circle'
+        })
+
+        cerrarDialogoPago()
+      } catch (error) {
+        console.error('Error guardando pago:', error)
+        $q.notify({
+          type: 'negative',
+          message: error.message || 'Error al registrar el pago',
+          position: 'top-right'
+        })
+      } finally {
+        guardando.value = false
+      }
+    }
+
+    // ============================================
+    // MÉTODOS - REPORTE PDF
+    // ============================================
+    const generarReporteGlobal = async () => {
+      try {
+        $q.loading.show({
+          message: 'Generando reporte global de ingresos...'
+        })
+
+        await generarReportePagosGlobal()
+
+        $q.notify({
+          type: 'positive',
+          message: 'Reporte PDF generado exitosamente',
+          position: 'top-right',
+          icon: 'picture_as_pdf'
+        })
+      } catch (error) {
+        console.error('Error generando reporte:', error)
+        $q.notify({
+          type: 'negative',
+          message: 'Error al generar el reporte PDF',
+          position: 'top-right'
+        })
+      } finally {
+        $q.loading.hide()
+      }
+    }
+
+    // ============================================
+    // MÉTODOS - FORMATEO
+    // ============================================
     const formatearMonto = (monto) => {
       return new Intl.NumberFormat('es-BO', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
-      }).format(monto)
+      }).format(monto || 0)
     }
-    
+
     const formatearFecha = (fecha) => {
-      return new Date(fecha).toLocaleDateString('es-BO')
+      if (!fecha) return '--'
+      try {
+        return new Date(fecha).toLocaleDateString('es-ES', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        })
+      } catch {
+        return '--'
+      }
     }
-    
+
     const formatearEstado = (estado) => {
       const estados = {
         'completado': 'Completado',
@@ -729,21 +815,21 @@ export default {
       }
       return estados[estado] || estado
     }
-    
+
     const formatearMetodoPago = (metodo) => {
       const metodos = {
         'efectivo': 'Efectivo',
-        'tarjeta': 'Tarjeta',
+        'stripe': 'Stripe',
         'transferencia': 'Transferencia',
         'qr': 'QR'
       }
       return metodos[metodo] || metodo
     }
-    
+
     const getEstadoClass = (estado) => {
       return `purchase-status-${estado}`
     }
-    
+
     const getEstadoIcon = (estado) => {
       const iconos = {
         'completado': 'fa-solid fa-check-circle',
@@ -752,187 +838,273 @@ export default {
       }
       return iconos[estado] || 'fa-solid fa-question-circle'
     }
-    
+
     const getMetodoIcon = (metodo) => {
       const iconos = {
         'efectivo': 'fa-solid fa-money-bill',
-        'tarjeta': 'fa-solid fa-credit-card',
+        'stripe': 'fa-solid fa-credit-card',
         'transferencia': 'fa-solid fa-exchange-alt',
         'qr': 'fa-solid fa-qrcode'
       }
       return iconos[metodo] || 'fa-solid fa-money-bill'
     }
-    
-    // Métodos de acción
-    const abrirDialogoPago = () => {
-      editando.value = false
-      formPago.value = { ...formPagoInicial }
-      dialogoPago.value = true
-    }
-    
-    const editarPago = (pago) => {
-      editando.value = true
-      formPago.value = { ...pago }
-      dialogoPago.value = true
-    }
-    
-    const cerrarDialogoPago = () => {
-      dialogoPago.value = false
-      formPago.value = { ...formPagoInicial }
-      editando.value = false
-    }
-    
-    const guardarPago = async () => {
-      guardando.value = true
-      
-      try {
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        if (editando.value) {
-          const index = pagos.value.findIndex(p => p.id === formPago.value.id)
-          if (index > -1) {
-            pagos.value[index] = { ...formPago.value }
-          }
-          $q.notify({
-            type: 'positive',
-            message: 'Pago actualizado exitosamente',
-            position: 'top-right'
-          })
-        } else {
-          const nuevoPago = {
-            ...formPago.value,
-            id: pagos.value.length + 1,
-            paciente: opcionesPacientes.value.find(p => p.value === formPago.value.pacienteId)?.label || 'Desconocido'
-          }
-          pagos.value.push(nuevoPago)
-          $q.notify({
-            type: 'positive',
-            message: 'Pago registrado exitosamente',
-            position: 'top-right'
-          })
-        }
-        
-        cerrarDialogoPago()
-      } catch (error) {
-        $q.notify({
-          type: 'negative',
-          message: 'Error al guardar el pago' + error.message,
-          position: 'top-right'
-        })
-      } finally {
-        guardando.value = false
-      }
-    }
-    
-    const verDetallePago = (pago) => {
-      pagoSeleccionado.value = pago
-      dialogoDetalle.value = true
-    }
-    
-    const generarRecibo = (pago) => {
-      $q.notify({
-        type: 'info',
-        message: 'Generando recibo...' + pago.id,
-        position: 'top-right'
-      })
-      
-      // Aquí implementarías la lógica para generar el recibo
-      setTimeout(() => {
-        $q.notify({
-          type: 'positive',
-          message: 'Recibo generado exitosamente',
-          position: 'top-right'
-        })
-      }, 1500)
-    }
-    
-    const exportarDatos = () => {
-      $q.notify({
-        type: 'info',
-        message: 'Exportando datos...',
-        position: 'top-right'
-      })
-      
-      // Aquí implementarías la lógica para exportar los datos
-      setTimeout(() => {
-        $q.notify({
-          type: 'positive',
-          message: 'Datos exportados exitosamente',
-          position: 'top-right'
-        })
-      }, 2000)
-    }
-    
-    const generarReportePDF = async () => {
-      try {
-        $q.loading.show({
-          message: 'Generando reporte PDF...'
-        })
 
-        // Simular generación de PDF
-        await new Promise(resolve => setTimeout(resolve, 3000))
-
-        $q.notify({
-          type: 'positive',
-          message: 'Reporte PDF generado exitosamente',
-          position: 'top-right'
-        })
-      } catch (error) {
-        $q.notify({
-          type: 'negative',
-          message: 'Error al generar el reporte PDF' + error.message,
-          position: 'top-right'
-        })
-      } finally {
-        $q.loading.hide()
-      }
-    }
-    
-    onMounted(() => {
-      paginacion.value.rowsNumber = pagos.value.length
+    // ============================================
+    // LIFECYCLE
+    // ============================================
+    onMounted(async () => {
+      // Cargar todos los pacientes
+      await pacienteStore.cargarPacientes()
     })
-    
+
     return {
-      // Estados
-      cargando,
-      guardando,
+      // State
+      pacienteSeleccionado,
+      pacienteActual,
+      opcionesPacientesFiltradas,
       dialogoPago,
-      dialogoDetalle,
-      editando,
-      pagoSeleccionado,
-      filtros,
+      dialogoHistorial,
+      guardando,
+      piezaSeleccionada,
+      pagosHistorial,
       formPago,
-      paginacion,
-      
-      // Datos
-      pagos,
-      columnasPagos,
-      opcionesEstado,
+
+      // Stores
+      odontogramStore,
+      pagoStore,
+      pacienteStore,
+
+      // Opciones
       opcionesMetodoPago,
       opcionesPacientes,
-      
+
+      // Tablas
+      columnasPiezas,
+      columnasHistorial,
+
       // Computed
-      pagosFiltrados,
-      resumenPagos,
-      
+      nombreCompletoPaciente,
+      totalesPiezaActual,
+
       // Métodos
+      filtrarPacientes,
+      seleccionarPaciente,
+      limpiarPaciente,
+      calcularTotalesPieza,
+      getColorProgreso,
+      abrirDialogoPago,
+      cerrarDialogoPago,
+      verHistorialPagos,
+      guardarPago,
+      generarReporteGlobal,
       formatearMonto,
       formatearFecha,
       formatearEstado,
       formatearMetodoPago,
       getEstadoClass,
       getEstadoIcon,
-      getMetodoIcon,
-      abrirDialogoPago,
-      editarPago,
-      cerrarDialogoPago,
-      guardarPago,
-      verDetallePago,
-      generarRecibo,
-      exportarDatos,
-      generarReportePDF
+      getMetodoIcon
     }
   }
 }
 </script>
 
+<style scoped>
+/* Agrega estos estilos adicionales a tus estilos existentes */
+
+.selected-patient-chip {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+}
+
+.purchase-search-input {
+  font-size: 16px;
+}
+
+.purchase-search-input .q-field__prepend {
+  color: #667eea;
+}
+
+/* Mantén todos tus demás estilos existentes */
+</style>
+
+<style scoped>
+/* Mantén todos tus estilos existentes aquí */
+/* Solo agrego algunos estilos adicionales necesarios */
+
+.purchase-patient-info {
+  max-width: 1400px;
+  margin: 0 auto 24px;
+  padding: 0 24px;
+}
+
+.patient-info-card {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.patient-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 32px;
+}
+
+.patient-details {
+  flex: 1;
+}
+
+.patient-name {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.patient-ci {
+  margin: 0;
+  color: #7f8c8d;
+  font-size: 14px;
+}
+
+.tooth-number-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.progress-label {
+  font-size: 12px;
+  color: #7f8c8d;
+  font-weight: 600;
+}
+
+.payment-piece-info {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.piece-info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.piece-info-row:last-child {
+  border-bottom: none;
+}
+
+.piece-info-row.highlight {
+  background: #fff3cd;
+  padding: 12px;
+  margin: 8px -8px -8px;
+  border-radius: 0 0 12px 12px;
+}
+
+.piece-info-label {
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.piece-info-value {
+  color: #212529;
+  font-weight: 600;
+}
+
+.purchase-no-patient {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.purchase-empty-state {
+  text-align: center;
+  max-width: 400px;
+}
+
+.purchase-empty-illustration {
+  position: relative;
+  margin: 0 auto 32px;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.purchase-empty-icon {
+  font-size: 64px;
+  color: #667eea;
+  z-index: 2;
+  position: relative;
+}
+
+.purchase-empty-circle {
+  position: absolute;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+}
+
+.purchase-empty-circle-1 {
+  width: 100%;
+  height: 100%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.purchase-empty-circle-2 {
+  width: 80%;
+  height: 80%;
+  animation: pulse 2s ease-in-out infinite 1s;
+}
+
+.purchase-empty-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0 0 12px 0;
+}
+
+.purchase-empty-description {
+  font-size: 16px;
+  color: #7f8c8d;
+  margin: 0;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.5;
+  }
+}
+</style>

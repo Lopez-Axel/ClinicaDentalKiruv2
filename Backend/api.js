@@ -35,7 +35,11 @@ app.use('/citas', require('./routes/citaRoutes'));
 app.use('/pacientes', require('./routes/pacienteRouter'));
 app.use('/recetas', require('./routes/recetaRouter.js'));
 app.use('/contacto', require('./routes/contactoRoutes.js'));
-
+app.use('/odontogramas', require('./routes/odontogramaRoutes.js'));
+app.use('/piezas', require('./routes/piezaRoutes.js'));
+app.use('/caras', require('./routes/caraRoutes.js'));
+app.use('/pagos', require('./routes/pagoRoutes.js'));
+app.use('/pago-pieza-stripe', require('./routes/pagoPiezaStripeRoutes'));
 app.get('/', (req, res) => {
   res.send('<a href="/auth/google">Authenticate con google</a>');
 });

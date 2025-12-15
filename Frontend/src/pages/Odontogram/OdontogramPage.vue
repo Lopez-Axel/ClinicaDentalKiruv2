@@ -1,321 +1,356 @@
 <template>
-  <div class="odontogram-page-container">
-    <!-- Header Section -->
-    <div class="odontogram-page-header">
-      <div class="odontogram-header-background">
-        <div class="odontogram-header-shape odontogram-header-shape-1"></div>
-        <div class="odontogram-header-shape odontogram-header-shape-2"></div>
-      </div>
-      <div class="odontogram-header-content">
-        <div class="odontogram-title-section">
-          <div class="odontogram-icon-wrapper">
-            <i class="fa-solid fa-tooth odontogram-header-icon"></i>
-          </div>
-          <div>
-            <h1 class="odontogram-page-title">Odontograma</h1>
-            <p class="odontogram-page-subtitle">Visualiza y gestiona el tratamiento dental del paciente</p>
-          </div>
-        </div>
+  <q-page class="q-pa-md">
+    <!-- Header -->
+    <div class="row q-mb-lg items-center">
+      <div class="col">
+        <h4 class="text-h4 q-my-none">Odontograma</h4>
+        <p class="text-grey-7">Gestión dental del paciente</p>
       </div>
     </div>
 
-    <!-- Search Component -->
-    <div class="odontogram-search-section">
-      <SearchPaciente @paciente-seleccionado="cargarOdontograma" />
+    <!-- Búsqueda de Paciente -->
+    <q-card flat bordered class="q-mb-lg">
+      <q-card-section>
+        <SearchPatient @paciente-seleccionado="onPacienteSeleccionado" />
+      </q-card-section>
+    </q-card>
+
+    <!-- Información del Paciente Seleccionado -->
+    <q-card v-if="pacienteStore.selectedPatient" flat bordered class="q-mb-lg">
+      <q-card-section>
+        <div class="row items-center">
+          <div class="col">
+            <div class="text-h6">
+              {{ pacienteStore.getNombreCompleto(pacienteStore.selectedPatient) }}
+            </div>
+            <div class="text-grey-7">
+              CI: {{ pacienteStore.selectedPatient.ci }} | 
+              Edad: {{ pacienteStore.calcularEdad(pacienteStore.selectedPatient.fecha_nacimiento) }} años
+            </div>
+          </div>
+          <div class="col-auto">
+            <q-chip color="primary" text-color="white" icon="event">
+              {{ pacienteStore.formatearFecha(pacienteStore.selectedPatient.fecha_nacimiento) }}
+            </q-chip>
+          </div>
+        </div>
+      </q-card-section>
+    </q-card>
+
+    <!-- Información del Odontograma -->
+    <q-card v-if="odontogramStore.odontogramaActual" flat bordered class="q-mb-lg">
+      <q-card-section>
+        <div class="text-h6 q-mb-md">Información del Odontograma</div>
+        
+        <div class="row q-col-gutter-md">
+          <!-- Tipo de Dentición -->
+          <div class="col-12 col-md-4">
+            <q-input
+              v-model="formOdontograma.tipo_denticion"
+              label="Tipo de Dentición"
+              outlined
+              dense
+              readonly
+            >
+              <template v-slot:prepend>
+                <q-icon name="dental_services" />
+              </template>
+            </q-input>
+          </div>
+
+          <!-- Precio Total -->
+          <div class="col-12 col-md-4">
+            <q-input
+              :model-value="'Bs. ' + odontogramStore.precioTotal.toFixed(2)"
+              label="Precio Total Tratamiento"
+              outlined
+              dense
+              readonly
+            >
+              <template v-slot:prepend>
+                <q-icon name="paid" color="green" />
+              </template>
+            </q-input>
+          </div>
+
+          <!-- Número de Piezas en Tratamiento -->
+          <div class="col-12 col-md-4">
+            <q-input
+              :model-value="odontogramStore.piezas.length + ' piezas'"
+              label="Piezas en Tratamiento"
+              outlined
+              dense
+              readonly
+            >
+              <template v-slot:prepend>
+                <q-icon name="format_list_numbered" color="blue" />
+              </template>
+            </q-input>
+          </div>
+
+          <!-- Diagnóstico General -->
+          <div class="col-12">
+            <q-input
+              v-model="formOdontograma.diagnostico_general"
+              label="Diagnóstico General"
+              outlined
+              type="textarea"
+              rows="2"
+            >
+              <template v-slot:prepend>
+                <q-icon name="description" />
+              </template>
+            </q-input>
+          </div>
+
+          <!-- Plan de Tratamiento -->
+          <div class="col-12">
+            <q-input
+              v-model="formOdontograma.plan_tratamiento"
+              label="Plan de Tratamiento"
+              outlined
+              type="textarea"
+              rows="2"
+            >
+              <template v-slot:prepend>
+                <q-icon name="assignment" />
+              </template>
+            </q-input>
+          </div>
+
+          <!-- Notas -->
+          <div class="col-12">
+            <q-input
+              v-model="formOdontograma.notas"
+              label="Notas Adicionales"
+              outlined
+              type="textarea"
+              rows="2"
+            >
+              <template v-slot:prepend>
+                <q-icon name="note" />
+              </template>
+            </q-input>
+          </div>
+
+          <!-- Botón Guardar Cambios -->
+          <div class="col-12 text-right">
+            <q-btn
+              color="primary"
+              label="Guardar Cambios"
+              icon="save"
+              @click="guardarCambiosOdontograma"
+              :loading="odontogramStore.loading"
+            />
+          </div>
+        </div>
+      </q-card-section>
+    </q-card>
+
+    <!-- Odontograma Visual -->
+    <q-card v-if="odontogramStore.odontogramaActual" flat bordered>
+      <q-card-section>
+        <div class="text-h6 q-mb-md text-center">Esquema Dental</div>
+
+        <!-- Dientes Superiores -->
+        <div class="row justify-center q-mb-xl">
+          <!-- Cuadrante Superior Derecho (18-11) -->
+          <div class="row reverse">
+            <ToothComponent
+              v-for="numero in [18, 17, 16, 15, 14, 13, 12, 11]"
+              :key="numero"
+              :numero="numero"
+              posicion="up"
+              :pieza="odontogramStore.getPiezaPorNumero(numero)"
+              :caras="odontogramStore.getCarasDePieza(odontogramStore.getPiezaPorNumero(numero)?.id)"
+              @click="onToothClick(numero, 'up')"
+            />
+          </div>
+
+          <div class="q-mx-lg"></div>
+
+          <!-- Cuadrante Superior Izquierdo (21-28) -->
+          <div class="row">
+            <ToothComponent
+              v-for="numero in [21, 22, 23, 24, 25, 26, 27, 28]"
+              :key="numero"
+              :numero="numero"
+              posicion="up"
+              :pieza="odontogramStore.getPiezaPorNumero(numero)"
+              :caras="odontogramStore.getCarasDePieza(odontogramStore.getPiezaPorNumero(numero)?.id)"
+              @click="onToothClick(numero, 'up')"
+            />
+          </div>
+        </div>
+
+        <!-- Dientes Inferiores -->
+        <div class="row justify-center">
+          <!-- Cuadrante Inferior Derecho (48-41) -->
+          <div class="row reverse">
+            <ToothComponent
+              v-for="numero in [48, 47, 46, 45, 44, 43, 42, 41]"
+              :key="numero"
+              :numero="numero"
+              posicion="down"
+              :pieza="odontogramStore.getPiezaPorNumero(numero)"
+              :caras="odontogramStore.getCarasDePieza(odontogramStore.getPiezaPorNumero(numero)?.id)"
+              @click="onToothClick(numero, 'down')"
+            />
+          </div>
+
+          <div class="q-mx-lg"></div>
+
+          <!-- Cuadrante Inferior Izquierdo (31-38) -->
+          <div class="row">
+            <ToothComponent
+              v-for="numero in [31, 32, 33, 34, 35, 36, 37, 38]"
+              :key="numero"
+              :numero="numero"
+              posicion="down"
+              :pieza="odontogramStore.getPiezaPorNumero(numero)"
+              :caras="odontogramStore.getCarasDePieza(odontogramStore.getPiezaPorNumero(numero)?.id)"
+              @click="onToothClick(numero, 'down')"
+            />
+          </div>
+        </div>
+
+        <!-- Leyenda -->
+        <div class="row justify-center q-mt-xl">
+          <div class="col-auto q-pa-md">
+            <div class="text-subtitle2 q-mb-sm">Estados:</div>
+            <q-chip size="sm" color="grey-3" text-color="grey-8">Sano</q-chip>
+            <q-chip size="sm" color="red-3" text-color="red-9">Enfermo</q-chip>
+            <q-chip size="sm" color="green-3" text-color="green-9">Tratado</q-chip>
+            <q-chip size="sm" color="grey-8" text-color="white">Ausente</q-chip>
+          </div>
+        </div>
+      </q-card-section>
+    </q-card>
+
+    <!-- Loading State -->
+    <div v-if="odontogramStore.loading" class="text-center q-pa-xl">
+      <q-spinner color="primary" size="50px" />
+      <p class="text-grey-7 q-mt-md">Cargando odontograma...</p>
     </div>
 
-    <!-- Odontogram Content -->
-    <div v-if="pacienteSeleccionado && odontograma" class="odontogram-content-container">
-      <!-- Patient Info Card -->
-      <div class="odontogram-patient-card">
-        <div class="odontogram-card-header">
-          <div class="odontogram-patient-info">
-            <h3 class="odontogram-patient-name">Odontograma de {{ pacienteSeleccionado.nombre }}</h3>
-            <div class="odontogram-patient-details">
-              <span class="odontogram-patient-detail">
-                <i class="fa-solid fa-id-card"></i>
-                CI: {{ pacienteSeleccionado.ci }}
-              </span>
-              <span class="odontogram-patient-detail">
-                <i class="fa-solid fa-teeth"></i>
-                Tipo: {{ odontograma.tipo_denticion }}
-              </span>
-            </div>
-          </div>
-          <q-btn 
-            class="odontogram-edit-btn"
-            flat 
-            icon="fa-solid fa-edit" 
-            label="Editar" 
-            size="md"
-          />
-        </div>
+    <!-- Empty State -->
+    <q-card v-if="!pacienteStore.selectedPatient && !odontogramStore.loading" flat bordered>
+      <q-card-section class="text-center q-pa-xl">
+        <q-icon name="person_search" size="80px" color="grey-5" />
+        <p class="text-h6 text-grey-7 q-mt-md">Selecciona un paciente para comenzar</p>
+        <p class="text-grey-6">Busca por CI o nombre del paciente</p>
+      </q-card-section>
+    </q-card>
 
-        <div class="odontogram-diagnosis-section">
-          <div class="odontogram-diagnosis-item">
-            <div class="odontogram-diagnosis-label">
-              <i class="fa-solid fa-stethoscope"></i>
-              Diagnóstico General:
-            </div>
-            <div class="odontogram-diagnosis-text">{{ odontograma.diagnostico_general }}</div>
-          </div>
-          <div class="odontogram-diagnosis-item">
-            <div class="odontogram-diagnosis-label">
-              <i class="fa-solid fa-clipboard-list"></i>
-              Plan de Tratamiento:
-            </div>
-            <div class="odontogram-diagnosis-text">{{ odontograma.plan_tratamiento }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Odontogram Grid -->
-      <div class="odontogram-grid-card">
-        <div class="odontogram-grid-container">
-          <div class="odontogram-quadrant odontogram-quadrant-superior-derecho">
-            <div class="odontogram-quadrant-label">
-              <i class="fa-solid fa-arrow-up-right"></i>
-              Superior Derecho
-            </div>
-            <div class="odontogram-teeth-row">
-              <Tooth
-                v-for="num in [18, 17, 16, 15, 14, 13, 12, 11]"
-                :key="num"
-                :pieza="obtenerPieza(num)"
-                posicion="superior"
-                @select-face="handleSelectFace"
-              />
-            </div>
-          </div>
-
-          <div class="odontogram-quadrant odontogram-quadrant-superior-izquierdo">
-            <div class="odontogram-quadrant-label">
-              <i class="fa-solid fa-arrow-up-left"></i>
-              Superior Izquierdo
-            </div>
-            <div class="odontogram-teeth-row">
-              <Tooth
-                v-for="num in [21, 22, 23, 24, 25, 26, 27, 28]"
-                :key="num"
-                :pieza="obtenerPieza(num)"
-                posicion="superior"
-                @select-face="handleSelectFace"
-              />
-            </div>
-          </div>
-
-          <div class="odontogram-separator">
-            <div class="odontogram-separator-line"></div>
-          </div>
-
-          <div class="odontogram-quadrant odontogram-quadrant-inferior-derecho">
-            <div class="odontogram-teeth-row">
-              <Tooth
-                v-for="num in [48, 47, 46, 45, 44, 43, 42, 41]"
-                :key="num"
-                :pieza="obtenerPieza(num)"
-                posicion="inferior"
-                @select-face="handleSelectFace"
-              />
-            </div>
-            <div class="odontogram-quadrant-label">
-              <i class="fa-solid fa-arrow-down-right"></i>
-              Inferior Derecho
-            </div>
-          </div>
-
-          <div class="odontogram-quadrant odontogram-quadrant-inferior-izquierdo">
-            <div class="odontogram-teeth-row">
-              <Tooth
-                v-for="num in [31, 32, 33, 34, 35, 36, 37, 38]"
-                :key="num"
-                :pieza="obtenerPieza(num)"
-                posicion="inferior"
-                @select-face="handleSelectFace"
-              />
-            </div>
-            <div class="odontogram-quadrant-label">
-              <i class="fa-solid fa-arrow-down-left"></i>
-              Inferior Izquierdo
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Treatment Summary -->
-      <div class="odontogram-summary-card">
-        <div class="odontogram-card-header">
-          <h3 class="odontogram-summary-title">
-            <i class="fa-solid fa-list-check"></i>
-            Resumen de Tratamientos
-          </h3>
-        </div>
-
-        <div class="odontogram-treatments-list">
-          <div 
-            v-for="pieza in piezasConTratamiento" 
-            :key="pieza.id" 
-            class="odontogram-treatment-item"
-          >
-            <div class="odontogram-treatment-avatar">
-              <q-avatar 
-                :color="getColorEstado(pieza.estado_general)" 
-                text-color="white"
-                size="48px"
-                class="odontogram-tooth-avatar"
-              >
-                {{ pieza.numero }}
-              </q-avatar>
-              <div class="odontogram-tooth-badge" :class="`odontogram-status-${pieza.estado_general}`"></div>
-            </div>
-
-            <div class="odontogram-treatment-info">
-              <div class="odontogram-treatment-name">Diente #{{ pieza.numero }}</div>
-              <div class="odontogram-treatment-diagnosis">{{ pieza.diagnostico }}</div>
-            </div>
-
-            <div class="odontogram-treatment-details">
-              <q-chip 
-                :class="['odontogram-status-chip', `odontogram-status-${pieza.estado_general}`]"
-                :label="pieza.estado_general"
-                size="sm"
-              />
-              <div class="odontogram-treatment-price">Bs. {{ pieza.precio.toFixed(2) }}</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="odontogram-total-section">
-          <div class="odontogram-total-content">
-            <div class="odontogram-total-label">Total del Tratamiento:</div>
-            <div class="odontogram-total-amount">Bs. {{ costoTotal.toFixed(2) }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- No Patient State -->
-    <div v-else class="odontogram-no-patient">
-      <div class="odontogram-empty-state">
-        <div class="odontogram-empty-illustration">
-          <i class="fa-solid fa-tooth odontogram-empty-icon"></i>
-          <div class="odontogram-empty-circle odontogram-empty-circle-1"></div>
-          <div class="odontogram-empty-circle odontogram-empty-circle-2"></div>
-        </div>
-        <h3 class="odontogram-empty-title">Selecciona un paciente</h3>
-        <p class="odontogram-empty-description">
-          Ingresa el CI del paciente en el campo de búsqueda para cargar su odontograma
-        </p>
-      </div>
-    </div>
-  </div>
+    <!-- Modal de Pieza -->
+    <PiezaModal
+      v-model="showPiezaModal"
+      :numero-diente="numeroDienteSeleccionado"
+      :posicion="posicionDienteSeleccionado"
+    />
+  </q-page>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { usePacientesStore } from 'src/stores/pacientes'
-import SearchPaciente from '../../components/SearchPatien.vue'
-import Tooth from '../../components/ToothComponent.vue'
-import odontogramaData from '../../data/odontograma.json'
+import { ref, reactive, watch, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
+import { usePacienteStore } from 'src/stores/pacienteStore'
+import { useOdontogramStore } from 'src/stores/odontogramStore'
+import SearchPatient from 'src/components/SearchPatien.vue'
+import ToothComponent from 'src/components/ToothComponent.vue'
+import PiezaModal from 'src/components/PiezaModal.vue'
 
-const store = usePacientesStore()
+const $q = useQuasar()
+const pacienteStore = usePacienteStore()
+const odontogramStore = useOdontogramStore()
 
-const odontograma = ref(null)
-const piezas = ref([])
-const caras = ref([])
+// State
+const showPiezaModal = ref(false)
+const numeroDienteSeleccionado = ref(null)
+const posicionDienteSeleccionado = ref(null)
 
-onMounted(() => {
-  store.cargarPacientes()
+const formOdontograma = reactive({
+  tipo_denticion: 'Permanente',
+  diagnostico_general: '',
+  plan_tratamiento: '',
+  notas: ''
 })
 
-const pacienteSeleccionado = computed(() => store.pacienteSeleccionado)
-console.log('Paciente seleccionado:', pacienteSeleccionado.value)
-
-const cargarOdontograma = (paciente) => {
-  if (!paciente || !paciente.ci) {
-    console.error('No se puede cargar odontograma sin CI del paciente')
-    return
+onMounted(async () => {
+  if (pacienteStore.pacientes.length === 0){
+    await pacienteStore.cargarPacientes()
   }
+})
 
-  // Buscar el odontograma que corresponde al CI del paciente
-  const odontogramaEncontrado = odontogramaData.odontogramas.find(
-    (o) => o.paciente_ci === paciente.ci
-  )
-
-  if (!odontogramaEncontrado) {
-    console.warn(`No se encontró odontograma para el paciente con CI: ${paciente.ci}`)
-    odontograma.value = null
-    piezas.value = []
-    caras.value = []
-    return
+// Watch para actualizar form cuando cambia el odontograma
+watch(() => odontogramStore.odontogramaActual, (nuevoOdontograma) => {
+  if (nuevoOdontograma) {
+    formOdontograma.tipo_denticion = nuevoOdontograma.tipo_denticion
+    formOdontograma.diagnostico_general = nuevoOdontograma.diagnostico_general || ''
+    formOdontograma.plan_tratamiento = nuevoOdontograma.plan_tratamiento || ''
+    formOdontograma.notas = nuevoOdontograma.notas || ''
   }
+})
 
-  // Cargar el odontograma encontrado
-  odontograma.value = odontogramaEncontrado
-
-  // Filtrar solo las piezas que pertenecen a este odontograma
-  piezas.value = odontogramaData.piezas.filter(
-    (p) => p.id_odontograma === odontogramaEncontrado.id
-  )
-
-  // Obtener los IDs de las piezas encontradas
-  const idsPiezas = piezas.value.map((p) => p.id)
-
-  // Filtrar solo las caras que pertenecen a las piezas de este odontograma
-  caras.value = odontogramaData.caras.filter(
-    (c) => idsPiezas.includes(c.id_pieza)
-  )
-
-  console.log('Odontograma cargado:', {
-    paciente_ci: paciente.ci,
-    odontograma: odontogramaEncontrado,
-    total_piezas: piezas.value.length,
-    total_caras: caras.value.length
-  })
+// Handlers
+const onPacienteSeleccionado = async (paciente) => {
+  try {
+    await odontogramStore.cargarOdontogramaPorPaciente(paciente.ci)
+    
+    $q.notify({
+      type: 'positive',
+      message: 'Odontograma cargado correctamente',
+      position: 'top-right'
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Error al cargar odontograma' + error.messagec,
+      position: 'top-right'
+    })
+  }
 }
 
-const obtenerPieza = (numero) => {
-  const pieza = piezas.value.find((p) => p.numero === numero)
+const onToothClick = async (numero, posicion) => {
+  numeroDienteSeleccionado.value = numero
+  posicionDienteSeleccionado.value = posicion
   
-  if (!pieza) {
-    return {
-      numero,
-      caras: [],
-      estado_general: 'sano',
-      precio: 0,
-      diagnostico: '',
-      image_tooth: numero >= 11 && numero <= 28 ? 'tooth_up.png' : 'tooth_down.png'
-    }
-  }
-
-  const carasPieza = caras.value.filter((c) => c.id_pieza === pieza.id)
-  
-  return {
-    ...pieza,
-    caras: carasPieza
+  try {
+    // Obtener o crear la pieza
+    await odontogramStore.obtenerOCrearPieza(numero, posicion)
+    
+    // Abrir modal
+    showPiezaModal.value = true
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Error al cargar información del diente' + error.message,
+      position: 'top-right'
+    })
   }
 }
 
-const piezasConTratamiento = computed(() => {
-  return piezas.value.filter((p) => p.estado_general !== 'sano')
-})
-
-const costoTotal = computed(() => {
-  return piezas.value.reduce((sum, pieza) => sum + (pieza.precio || 0), 0)
-})
-
-const getColorEstado = (estado) => {
-  const colores = {
-    sano: 'positive',
-    enfermo: 'negative',
-    tratado: 'info',
-    ausente: 'grey'
+const guardarCambiosOdontograma = async () => {
+  try {
+    await odontogramStore.actualizarOdontograma(formOdontograma)
+    
+    $q.notify({
+      type: 'positive',
+      message: 'Cambios guardados correctamente',
+      position: 'top-right'
+    })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: 'Error al guardar cambios' + error.message,
+      position: 'top-right'
+    })
   }
-  return colores[estado] || 'grey'
-}
-
-const handleSelectFace = (data) => {
-  console.log('Cara seleccionada:', data)
 }
 </script>
 
+<style scoped>
+.reverse {
+  flex-direction: row-reverse;
+}
+</style>

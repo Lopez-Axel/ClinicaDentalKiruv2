@@ -1,41 +1,48 @@
 <template>
   <div class="search-section">
-    <!-- Input con datalist -->
-    <q-input
-      :model-value="searchTerm"
-      @update:model-value="actualizarBusqueda"
-      class="search-input"
+    <q-select
+      v-model="pacienteSeleccionado"
+      :options="opcionesFiltradas"
+      option-value="id"
+      option-label="label"
+      use-input
+      input-debounce="300"
       outlined
-      type="search"
-      placeholder="Ingresa el CI del Paciente (ej: 12345678)"
-      clearable
       dense
-      list="pacientes-list"
-      @vue:updated="validarYSeleccionar"
+      clearable
+      placeholder="Buscar paciente por CI o nombre..."
+      @filter="filtrarPacientes"
+      @update:model-value="seleccionarPaciente"
     >
       <template v-slot:prepend>
         <i class="fa-solid fa-search"></i>
       </template>
-    </q-input>
 
-    <!-- Datalist HTML con sugerencias -->
-    <datalist id="pacientes-list">
-      <option
-        v-for="paciente in sugerenciasPacientes"
-        :key="paciente.id"
-        :value="paciente.ci"
-        :label="`${paciente.ci} - ${paciente.nombre} ${paciente.apellidoPaterno}`"
-      />
-    </datalist>
+      <template v-slot:no-option>
+        <q-item>
+          <q-item-section class="text-grey">
+            No se encontraron pacientes
+          </q-item-section>
+        </q-item>
+      </template>
 
-    <!-- Mostrar paciente seleccionado -->
-    <div v-if="pacienteSeleccionado" class="paciente-info q-mt-md">
+      <template v-slot:option="scope">
+        <q-item v-bind="scope.itemProps">
+          <q-item-section>
+            <q-item-label>{{ scope.opt.label }}</q-item-label>
+            <q-item-label caption>CI: {{ scope.opt.ci }}</q-item-label>
+          </q-item-section>
+        </q-item>
+      </template>
+    </q-select>
+
+    <div v-if="store.selectedPatient" class="paciente-info q-mt-md">
       <q-card>
         <q-card-section>
           <div class="row items-center q-gutter-md">
             <div class="col">
-              <p class="text-h6">{{ pacienteSeleccionado.nombre }} {{ pacienteSeleccionado.apellidoPaterno }}</p>
-              <p class="text-subtitle2 text-grey-7">CI: {{ pacienteSeleccionado.ci }}</p>
+              <p class="text-h6">{{ store.getNombreCompleto(store.selectedPatient) }}</p>
+              <p class="text-subtitle2 text-grey-7">CI: {{ store.selectedPatient.ci }}</p>
             </div>
             <div class="col-auto">
               <q-btn
@@ -55,40 +62,50 @@
 </template>
 
 <script setup>
-import { computed, watch } from 'vue'
-import { usePacientesStore } from 'src/stores/pacientes'
+import { ref, watch } from 'vue'
+import { usePacienteStore } from 'src/stores/pacienteStore'
 
-// Definir el emit para el evento paciente-seleccionado
 const emit = defineEmits(['paciente-seleccionado'])
+const store = usePacienteStore()
 
-const store = usePacientesStore()
+const pacienteSeleccionado = ref(null)
+const opcionesFiltradas = ref([])
 
-// Computed properties del store
-const searchTerm = computed(() => store.searchTerm)
-const sugerenciasPacientes = computed(() => store.sugerenciasPacientes)
-const pacienteSeleccionado = computed(() => store.pacienteSeleccionado)
+const filtrarPacientes = (val, update) => {
+  update(() => {
+    const needle = val.toLowerCase()
+    
+    opcionesFiltradas.value = store.pacientes
+      .filter(p => p.state === 1)
+      .filter(p => {
+        const nombreCompleto = store.getNombreCompleto(p).toLowerCase()
+        const ci = p.ci?.toLowerCase() || ''
+        return nombreCompleto.includes(needle) || ci.includes(needle)
+      })
+      .map(p => ({
+        id: p.id,
+        ci: p.ci,
+        label: `${store.getNombreCompleto(p)} - CI: ${p.ci}`,
+        paciente: p
+      }))
+      .slice(0, 50)
+  })
+}
 
-// Watch para emitir evento cuando se selecciona un paciente
-watch(pacienteSeleccionado, (nuevoPaciente) => {
-  if (nuevoPaciente) {
-    console.log('Paciente seleccionado en SearchPatien:', nuevoPaciente)
-    emit('paciente-seleccionado', nuevoPaciente)
+watch(() => store.selectedPatient, (nuevo) => {
+  if (nuevo) {
+    emit('paciente-seleccionado', nuevo)
   }
 })
 
-// Métodos
-const actualizarBusqueda = (valor) => {
-  store.actualizarBusqueda(valor)
-}
-
-const validarYSeleccionar = () => {
-  const ci = searchTerm.value.trim()
-  if (ci) {
-    store.seleccionarPacientePorCI(ci)
+const seleccionarPaciente = (opcion) => {
+  if (opcion && opcion.paciente) {
+    store.seleccionarPaciente(opcion.paciente)
   }
 }
 
 const limpiarSeleccion = () => {
-  store.limpiarSeleccion()
+  store.limpiarPacienteSeleccionado()
+  pacienteSeleccionado.value = null
 }
 </script>

@@ -7,9 +7,9 @@ import DashboardLayout from 'layouts/DashboardLayout.vue'
  * Esto se usa para filtrar el menú de navegación dinámicamente
  */
 export const rolePermissions = {
-  DENTIST: ['dashboard', 'patients', 'reserves', 'calendar', 'odontogram', 'quotes', 'historyQuotes'],
+  DENTIST: ['dashboard', 'patients', 'reserves', 'calendar', 'odontogram', 'quotes'],
   CLIENT: ['dashboard', 'reserves'],
-  ADMIN: ['dashboard', 'users', 'dentist', 'specialties', 'announcements', 'branches', 'patients', 'reserves', 'quotes', 'historyQuotes', 'calendar', 'odontogram', 'statistics', 'purchase', 'servicio']
+  ADMIN: ['dashboard', 'users', 'dentist', 'specialties', 'announcements', 'branches', 'patients', 'reserves', 'quotes', 'calendar', 'odontogram', 'statistics', 'purchase', 'servicio']
 }
 
 /**
@@ -61,8 +61,7 @@ export const dashboardMenuConfig = {
       title: 'Tratamientos',
       icon: 'healing',
       children: [
-        { title: 'Cotizaciones', icon: 'attach_money', to: '/quotes', permission: 'quotes' },
-        { title: 'Historial', icon: 'history', to: '/HistoryQuotes', permission: 'historyQuotes' },
+        { title: 'Citas', icon: 'attach_money', to: '/quotes', permission: 'quotes' },
         { title: 'Odontograma', icon: 'emoji_emotions', to: '/Odontogram', permission: 'odontogram' }
       ]
     },
@@ -112,8 +111,7 @@ export const dashboardMenuConfig = {
       title: 'Tratamientos',
       icon: 'healing',
       children: [
-        { title: 'Cotizaciones', icon: 'attach_money', to: '/quotes', permission: 'quotes' },
-        { title: 'Historial', icon: 'history', to: '/HistoryQuotes', permission: 'historyQuotes' },
+        { title: 'Citas', icon: 'attach_money', to: '/quotes', permission: 'quotes' },
         { title: 'Odontograma', icon: 'emoji_emotions', to: '/Odontogram', permission: 'odontogram' }
       ]
     }
@@ -313,17 +311,6 @@ const routes = [
           title: 'Cotizaciones'
         }
       },
-      {
-        path: '/HistoryQuotes',
-        name: 'HistoryQuotes',
-        component: () => import('pages/HistoryQuotes/HistoryQuotesPage.vue'),
-        meta: {
-          requiresAuth: true,
-          roles: ['DENTIST', 'ADMIN'],
-          title: 'Historial de Cotizaciones'
-        }
-      },
-
       // CALENDARIO - DENTIST y ADMIN
       {
         path: '/Calendar-Month',

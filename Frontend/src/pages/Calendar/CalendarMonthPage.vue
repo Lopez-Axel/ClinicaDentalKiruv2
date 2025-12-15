@@ -299,6 +299,14 @@ const diasSemana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 // Computed
 const sucursalesActivas = computed(() => sucursalStore.sucursalesActivas || [])
 
+const formatLocalDate = (date) => {
+  const d = new Date(date)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 const monthYear = computed(() => {
   const date = new Date(currentYear.value, currentMonth.value)
   return date.toLocaleString('es-ES', { month: 'long', year: 'numeric' })
@@ -327,7 +335,7 @@ const diasDelCalendario = computed(() => {
     const fecha = new Date(currentYear.value, currentMonth.value - 1, diasMesAnterior - i)
     dias.push({
       numero: diasMesAnterior - i,
-      dateStr: fecha.toISOString().split('T')[0],
+      dateStr: formatLocalDate(fecha),
       isCurrentMonth: false
     })
   }
@@ -337,7 +345,7 @@ const diasDelCalendario = computed(() => {
     const fecha = new Date(currentYear.value, currentMonth.value, i)
     dias.push({
       numero: i,
-      dateStr: fecha.toISOString().split('T')[0],
+      dateStr: formatLocalDate(fecha),
       isCurrentMonth: true
     })
   }
@@ -350,7 +358,7 @@ const diasDelCalendario = computed(() => {
     const fecha = new Date(currentYear.value, currentMonth.value + 1, i)
     dias.push({
       numero: i,
-      dateStr: fecha.toISOString().split('T')[0],
+      dateStr: formatLocalDate(fecha),
       isCurrentMonth: false
     })
   }
@@ -360,33 +368,39 @@ const diasDelCalendario = computed(() => {
 
 const citasDelMes = computed(() => {
   if (!sucursalSeleccionada.value) return []
-  
-  const inicio = new Date(currentYear.value, currentMonth.value, 1)
-    .toISOString().split('T')[0]
-  const fin = new Date(currentYear.value, currentMonth.value + 1, 0)
-    .toISOString().split('T')[0]
-  
-  return citaStore.citas.filter(c => 
+
+  const inicio = formatLocalDate(
+    new Date(currentYear.value, currentMonth.value, 1)
+  )
+
+  const fin = formatLocalDate(
+    new Date(currentYear.value, currentMonth.value + 1, 0)
+  )
+
+  return citaStore.citas.filter(c =>
     c.state === 1 &&
     c.sucursal_id === sucursalSeleccionada.value.id &&
-    c.fecha >= inicio &&
-    c.fecha <= fin
+    formatLocalDate(c.fecha) >= inicio &&
+    formatLocalDate(c.fecha) <= fin
   )
 })
 
 const reservasDelMes = computed(() => {
   if (!sucursalSeleccionada.value) return []
-  
-  const inicio = new Date(currentYear.value, currentMonth.value, 1)
-    .toISOString().split('T')[0]
-  const fin = new Date(currentYear.value, currentMonth.value + 1, 0)
-    .toISOString().split('T')[0]
-  
-  return reservaStore.reservas.filter(r => 
+
+  const inicio = formatLocalDate(
+    new Date(currentYear.value, currentMonth.value, 1)
+  )
+
+  const fin = formatLocalDate(
+    new Date(currentYear.value, currentMonth.value + 1, 0)
+  )
+
+  return reservaStore.reservas.filter(r =>
     r.state === 'active' &&
     r.sucursal_id === sucursalSeleccionada.value.id &&
-    r.fecha_reserva >= inicio &&
-    r.fecha_reserva <= fin
+    formatLocalDate(r.fecha_reserva) >= inicio &&
+    formatLocalDate(r.fecha_reserva) <= fin
   )
 })
 
@@ -416,7 +430,7 @@ const getEventosDelDia = (dateStr) => {
   
   // Citas
   citasDelMes.value.forEach(cita => {
-    if (cita.fecha === dateStr) {
+    if (formatLocalDate(cita.fecha) === dateStr) {
       eventos.push({
         id: cita.id,
         type: 'cita',
@@ -429,7 +443,7 @@ const getEventosDelDia = (dateStr) => {
   
   // Reservas
   reservasDelMes.value.forEach(reserva => {
-    if (reserva.fecha_reserva === dateStr) {
+    if (formatLocalDate(reserva.fecha_reserva) === dateStr) {
       eventos.push({
         id: reserva.id,
         type: 'reserva',
@@ -439,18 +453,19 @@ const getEventosDelDia = (dateStr) => {
       })
     }
   })
+
+  console.log('Eventos para', dateStr, eventos)
   
   return eventos.sort((a, b) => a.hora.localeCompare(b.hora))
 }
 
 const esReservaBloqueada = (evento) => {
   if (evento.type !== 'reserva') return false
-  return evento.data.usuario_id === authStore.user?.id && authStore.userRole === 'ADMIN'
+  return evento.data.usuario_id === authStore.user.id && authStore.userRole === 'ADMIN'
 }
 
 const esHoy = (dateStr) => {
-  const hoy = new Date().toISOString().split('T')[0]
-  return dateStr === hoy
+  return dateStr === formatLocalDate(new Date())
 }
 
 const onDragStart = (evento, e) => {
@@ -459,7 +474,7 @@ const onDragStart = (evento, e) => {
     return
   }
   draggedEvent.value = evento
-  draggedFromDate.value = evento.data.fecha
+  draggedFromDate.value = formatLocalDate(evento.data.fecha)
 }
 
 const onDropDay = (dateStr, e) => {

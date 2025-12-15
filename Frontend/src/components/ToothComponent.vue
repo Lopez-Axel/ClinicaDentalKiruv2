@@ -423,7 +423,7 @@ const SYMBOL_MAP = {
   'Protesis Removible': ProtesisRemovible,
   'Edentulo': LineaEdentulo,
   'Protesis Completa': ProtesisCompleta,
-  'Protesis Fija': LineaEdentulo, // Por ahora línea, requiere lógica especial
+  'Protesis Fija': LineaEdentulo, 
   'Diente extruido': FlechaExtruido,
   'Diente intruido': FlechaIntruido,
   'Ortodoncia Fija': OrtodonciaFija,
@@ -434,6 +434,10 @@ export default defineComponent({
   name: 'ToothComponent',
   props: {
     pieza: Object,
+    caras: {
+      type: Array,
+      default: () => []
+    },
     posicion: {
       type: String,
       default: 'superior'
@@ -525,11 +529,11 @@ export default defineComponent({
 
     // Obtener color de una cara
     const getFaceColor = (cara) => {
-      if (!props.pieza || !props.pieza.caras) {
+      if (!props.pieza || !props.caras) {
         return COLORES_CLINICOS.blanco
       }
 
-      const caraInfo = props.pieza.caras.find((c) => c.cara === cara)
+      const caraInfo = props.caras.find((c) => c.cara === cara)
       if (!caraInfo) {
         return COLORES_CLINICOS.blanco
       }
@@ -556,8 +560,8 @@ export default defineComponent({
       }
 
       // Si tiene información clínica, negro más intenso
-      if (props.pieza && props.pieza.caras) {
-        const caraInfo = props.pieza.caras.find((c) => c.cara === cara)
+      if (props.pieza && props.caras) {
+        const caraInfo = props.caras.find((c) => c.cara === cara)
         if (caraInfo) {
           return '#000000'
         }
