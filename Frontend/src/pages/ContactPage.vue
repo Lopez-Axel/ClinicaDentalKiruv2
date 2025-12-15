@@ -541,6 +541,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useQuasar } from 'quasar'
+import axios from 'axios'
 
 const $q = useQuasar()
 const loading = ref(false)
@@ -621,7 +622,14 @@ const onSubmitContact = async () => {
   loading.value = true
   
   try {
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    // Enviar a la API
+    await axios.post('http://localhost:5050/contacto', {
+      nombre: contactForm.name,
+      telefono: contactForm.phone,
+      email: contactForm.email,
+      asunto: contactForm.subject,
+      mensaje: contactForm.message
+    })
 
     $q.notify({
       type: 'positive',
@@ -651,7 +659,7 @@ const onSubmitContact = async () => {
       icon: 'error',
       position: 'top'
     })
-    return error
+    console.error('Error:', error)
   } finally {
     loading.value = false
   }
@@ -681,7 +689,6 @@ const openAppointmentDialog = () => {
     icon: 'calendar_today',
     timeout: 1500
   })
-  // Aquí iría la lógica para abrir el modal de citas
 }
 
 const openChat = () => {
@@ -691,10 +698,5 @@ const openChat = () => {
     icon: 'chat',
     timeout: 1500
   })
-  // Aquí iría la lógica para el chat en vivo
 }
 </script>
-
-<style lang="scss" scoped>
-
-</style>

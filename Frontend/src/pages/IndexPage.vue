@@ -331,6 +331,11 @@
       v-model="newAppointmentDialog"
       @abrir-pago="onAbrirPago"
     />
+    <!-- ✅ NUEVO: Modal de historial de citas -->
+    <AppointmentHistory
+      v-model="appointmentHistoryDialog"
+    />
+
 
     <!-- ✅ NUEVO: Modal de pago -->
     <PaymentModal
@@ -480,6 +485,7 @@ import { useAnuncioStore } from 'src/stores/anuncioStore'
 import AppointmentModal from 'components/AppointmentModal.vue'
 // ✅ NUEVOS IMPORTS (SOLO AGREGADOS)
 import NewAppointmentForm from 'components/NewAppointmentForm.vue'
+import AppointmentHistory from 'src/components/AppointmentHistory.vue'
 import PaymentModal from 'components/PaymentModal.vue'
 
 const $q = useQuasar()
@@ -493,6 +499,7 @@ const loading = ref(true)
 
 // ✅ NUEVOS ESTADOS (SOLO AGREGADOS)
 const newAppointmentDialog = ref(false)
+const appointmentHistoryDialog = ref(false)
 const paymentDialog = ref(false)
 const datosReservaParaPago = ref(null)
 
@@ -581,11 +588,7 @@ const onNewAppointment = () => {
 }
 
 const onHistory = () => {
-  $q.notify({
-    type: 'info',
-    message: 'Abriendo historial de citas...',
-    icon: 'history'
-  })
+  appointmentHistoryDialog.value = true
 }
 
 const onAppointmentCancel = () => {

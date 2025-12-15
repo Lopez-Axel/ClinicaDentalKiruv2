@@ -211,24 +211,26 @@
                 Los domingos no se atiende
               </q-banner>
 
-              <div v-else-if="availableTimeSlots.length > 0" class="row q-col-gutter-sm">
-                <div
-                  v-for="time in availableTimeSlots"
-                  :key="time"
-                  class="col-4"
+              <div v-else-if="todosHorarios.length > 0" class="horarios-grid">
+                <q-btn
+                  v-for="horario in todosHorarios"
+                  :key="horario.hora"
+                  :label="horario.hora"
+                  :outline="reservaStore.nuevaReserva.time !== horario.hora"
+                  :unelevated="reservaStore.nuevaReserva.time === horario.hora"
+                  :disable="!horario.disponible"
+                  :color="horario.disponible ? (reservaStore.nuevaReserva.time === horario.hora ? 'primary' : 'grey-7') : 'grey-4'"
+                  @click="horario.disponible && (reservaStore.nuevaReserva.time = horario.hora)"
+                  :class="{'hora-bloqueada': !horario.disponible}"
+                  class="horario-btn"
                 >
-                  <q-btn
-                    :label="time"
-                    :outline="reservaStore.nuevaReserva.time !== time"
-                    :unelevated="reservaStore.nuevaReserva.time === time"
-                    :color="reservaStore.nuevaReserva.time === time ? 'primary' : 'grey-7'"
-                    @click="reservaStore.nuevaReserva.time = time"
-                    class="full-width"
-                  />
-                </div>
+                  <q-tooltip v-if="!horario.disponible">
+                    Horario no disponible
+                  </q-tooltip>
+                </q-btn>
               </div>
 
-              <q-banner v-else dense class="bg-warning text-white">
+              <q-banner v-else-if="horariosDisponiblesCount === 0 && reservaStore.nuevaReserva.date" dense class="bg-warning text-white">
                 <template v-slot:avatar>
                   <q-icon name="warning" />
                 </template>
@@ -341,11 +343,24 @@ const dialogOpen = computed({
 })
 
 const cargandoHorarios = ref(false)
-const availableTimeSlots = ref([])
+const todosHorarios = ref([])
+
+const generarHorariosBase = () => {
+  const horarios = []
+  for (let h = 8; h <= 18; h++) {
+    if (h === 12 || h === 13) continue
+    horarios.push(`${String(h).padStart(2, '0')}:00`)
+  }
+  return horarios
+}
+
+const horariosDisponiblesCount = computed(() => {
+  return todosHorarios.value.filter(h => h.disponible).length
+})
 
 const onDateChange = async (newDate) => {
   if (!newDate || !reservaStore.nuevaReserva.clinic) {
-    availableTimeSlots.value = []
+    todosHorarios.value = generarHorariosBase().map(hora => ({ hora, disponible: false }))
     return
   }
 
@@ -353,20 +368,28 @@ const onDateChange = async (newDate) => {
   cargandoHorarios.value = true
   
   try {
-    const horarios = await reservaStore.obtenerHorariosDisponibles(
+    const horariosBase = generarHorariosBase()
+    
+    const respuesta = await reservaStore.obtenerHorariosDisponibles(
       reservaStore.nuevaReserva.clinic,
       newDate
     )
     
-    availableTimeSlots.value = horarios.filter(hora => {
-      const h = parseInt(hora.split(':')[0])
-      return h >= 8 && h <= 18
-    })
+    let disponibles = []
+    if (respuesta?.horarios_disponibles) {
+      disponibles = respuesta.horarios_disponibles.map(hora => 
+        typeof hora === 'string' ? hora.substring(0, 5) : hora
+      )
+    }
+
+    todosHorarios.value = horariosBase.map(hora => ({
+      hora,
+      disponible: disponibles.includes(hora)
+    }))
+
   } catch (error) {
-    $q.notify({
-      type: 'negative',
-      message: 'Error al cargar horarios disponibles' + error.message
-    })
+    console.error('Error cargando horarios:', error)
+    todosHorarios.value = generarHorariosBase().map(hora => ({ hora, disponible: false }))
   } finally {
     cargandoHorarios.value = false
   }
@@ -511,5 +534,29 @@ watch(() => reservaStore.nuevaReserva.clinic, () => {
 <style scoped>
 .cursor-pointer {
   cursor: pointer;
+}
+
+.horarios-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.horario-btn {
+  min-height: 40px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.hora-bloqueada {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+@media (max-width: 600px) {
+  .horarios-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 </style>

@@ -100,18 +100,18 @@ module.exports = {
   obtenerHorariosOcupados: async (sucursalId, fecha, dentistaId = null) => {
     // Horarios de reservas
     const [reservas] = await pool.query(
-      `SELECT DISTINCT hora_reserva as hora 
-       FROM reservas 
-       WHERE sucursal_id = ? 
-       AND fecha_reserva = ?
-       AND estado IN ('pendiente', 'confirmada')
-       AND state = 1`,
+      `SELECT DISTINCT TIME_FORMAT(hora_reserva, '%H:%i') as hora 
+      FROM reservas 
+      WHERE sucursal_id = ? 
+      AND fecha_reserva = ?
+      AND estado IN ('pendiente', 'confirmada')
+      AND state = 'active'`,
       [sucursalId, fecha]
     );
 
     // Horarios de citas
     let sqlCitas = `
-      SELECT DISTINCT hora 
+      SELECT DISTINCT TIME_FORMAT(hora, '%H:%i') as hora 
       FROM citas 
       WHERE sucursal_id = ? 
       AND fecha = ?

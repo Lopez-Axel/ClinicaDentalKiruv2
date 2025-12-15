@@ -2,6 +2,19 @@ const citaModel = require('../models/citaModel');
 const pacienteModel = require('../models/pacienteModel');
 const dentistaModel = require('../models/dentistaModel');
 
+const normalizeDate = (input) => {
+  if (!input) return input
+
+  const d = new Date(input)
+  if (isNaN(d)) return null
+
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
 module.exports = {
   // Listar todas las citas
   listado: async (req, res) => {
@@ -120,6 +133,13 @@ module.exports = {
         notas
       } = req.body;
 
+      const fechaNormalizada = normalizeDate(fecha)
+      if (!fechaNormalizada) {
+        return res.status(400).json({
+          success: 0,
+          message: 'Formato de fecha inválido'
+        })
+      }
       // Validaciones básicas
       if (!paciente_id || !dentista_id || !asunto || !fecha || !hora) {
         return res.status(400).json({
@@ -175,7 +195,7 @@ module.exports = {
         dentista_id,
         sucursal_id: sucursal_id || null,
         asunto,
-        fecha,
+        fecha: fechaNormalizada,
         hora,
         tipo_cita: tipo_cita || 'consulta',
         notas: notas || null,
@@ -213,6 +233,18 @@ module.exports = {
         notas
       } = req.body;
 
+      let fechaNormalizada = fecha
+
+      if (fecha) {
+        fechaNormalizada = normalizeDate(fecha)
+        if (!fechaNormalizada) {
+          return res.status(400).json({
+            success: 0,
+            message: 'Formato de fecha inválido'
+          })
+        }
+      }
+
       // Verificar que la cita existe
       const citaActual = await citaModel.obtenerPorId(id);
       if (!citaActual) {
@@ -225,7 +257,7 @@ module.exports = {
       // Si cambia fecha/hora/sucursal/dentista, verificar disponibilidad
       if (fecha || hora || sucursal_id || dentista_id) {
         const nuevaSucursal = sucursal_id !== undefined ? sucursal_id : citaActual.sucursal_id;
-        const nuevaFecha = fecha || citaActual.fecha;
+        const nuevaFecha = fechaNormalizada || citaActual.fecha
         const nuevaHora = hora || citaActual.hora;
         const nuevoDentista = dentista_id || citaActual.dentista_id;
 
@@ -267,7 +299,18 @@ module.exports = {
         }
       }
 
-      await citaModel.actualizar(id, req.body);
+      const dataActualizada = {
+        paciente_id,
+        dentista_id,
+        sucursal_id,
+        asunto,
+        fecha: fechaNormalizada,
+        hora,
+        tipo_cita,
+        notas
+      }
+
+      await citaModel.actualizar(id, dataActualizada);
       const citaActualizada = await citaModel.obtenerPorId(id);
 
       return res.status(200).json({
@@ -428,15 +471,24 @@ module.exports = {
         dentista_id || null
       );
 
-      // Generar todos los horarios posibles (8:00 a 20:00)
+      // NORMALIZAR: Convertir HH:MM:SS a HH:MM
+      const horariosOcupadosNormalizados = horariosOcupados.map(hora => {
+        if (typeof hora === 'string') {
+          return hora.substring(0, 5); // De "08:00:00" a "08:00"
+        }
+        return hora;
+      });
+
+      // Generar todos los horarios posibles (8:00 a 17:00, excluyendo 12:00 y 13:00)
       const todosLosHorarios = [];
-      for (let hora = 8; hora <= 20; hora++) {
+      for (let hora = 8; hora < 18; hora++) {
+        if (hora === 12 || hora === 13) continue; // Excluir horario de almuerzo
         todosLosHorarios.push(`${hora.toString().padStart(2, '0')}:00`);
       }
 
       // Filtrar horarios disponibles
       const horariosDisponibles = todosLosHorarios.filter(
-        horario => !horariosOcupados.includes(horario)
+        horario => !horariosOcupadosNormalizados.includes(horario)
       );
 
       return res.status(200).json({
@@ -446,7 +498,7 @@ module.exports = {
           sucursal_id: parseInt(sucursal_id),
           dentista_id: dentista_id ? parseInt(dentista_id) : null,
           horarios_disponibles: horariosDisponibles,
-          horarios_ocupados: horariosOcupados
+          horarios_ocupados: horariosOcupadosNormalizados
         }
       });
     } catch (err) {

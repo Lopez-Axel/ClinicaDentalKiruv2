@@ -192,35 +192,74 @@
             <q-separator spaced />
 
             <!-- Fecha y Hora -->
-            <div class="field-row">
-              <div class="field-group">
+            <div class="field-row full-width-row">
+              <div class="field-group full-width">
                 <label class="field-label">
                   <i class="fa-solid fa-calendar"></i>
                   <span>Fecha</span>
                   <span class="required">*</span>
                 </label>
-                <q-input
+                <q-date
                   v-model="form.fecha"
-                  filled
-                  dense
-                  type="date"
-                  :rules="[val => !!val || 'La fecha es requerida']"
+                  :options="dateOptions"
+                  mask="YYYY-MM-DD"
+                  minimal
+                  @update:model-value="onDateChange"
+                  class="full-width"
                 />
               </div>
+            </div>
 
-              <div class="field-group">
-                <label class="field-label">
-                  <i class="fa-solid fa-clock"></i>
-                  <span>Hora</span>
-                  <span class="required">*</span>
-                </label>
-                <q-input
-                  v-model="form.hora"
-                  filled
-                  dense
-                  type="time"
-                  :rules="[val => !!val || 'La hora es requerida']"
-                />
+            <!-- Horarios disponibles -->
+            <div class="field-group full-width">
+              <label class="field-label">
+                <i class="fa-solid fa-clock"></i>
+                <span>Hora</span>
+                <span class="required">*</span>
+              </label>
+
+              <div v-if="cargandoHorarios" class="loading-horarios">
+                <q-spinner color="primary" size="32px" />
+                <span class="text-grey-7">Verificando disponibilidad...</span>
+              </div>
+
+              <div v-else-if="!form.fecha" class="info-banner">
+                <q-icon name="info" color="blue" size="24px" />
+                <span>Primero selecciona una fecha</span>
+              </div>
+
+              <div v-else-if="!form.sucursal_id" class="info-banner">
+                <q-icon name="info" color="blue" size="24px" />
+                <span>Selecciona una sucursal para ver horarios disponibles</span>
+              </div>
+
+              <div v-else-if="esDomingo" class="warning-banner">
+                <q-icon name="event_busy" color="orange" size="24px" />
+                <span>Los domingos no se atiende</span>
+              </div>
+
+              <div v-else class="horarios-grid">
+                <q-btn
+                  v-for="horario in todosHorarios"
+                  :key="horario.hora"
+                  :label="horario.hora"
+                  :outline="form.hora !== horario.hora"
+                  :unelevated="form.hora === horario.hora"
+                  :disable="!horario.disponible"
+                  :color="horario.disponible ? (form.hora === horario.hora ? 'primary' : 'grey-7') : 'grey-4'"
+                  @click="horario.disponible && (form.hora = horario.hora)"
+                  :class="{'hora-bloqueada': !horario.disponible}"
+                  class="horario-btn"
+                >
+                  <q-tooltip v-if="!horario.disponible">
+                    Horario no disponible
+                  </q-tooltip>
+                </q-btn>
+              </div>
+
+              <div v-if="horariosDisponiblesCount === 0 && form.fecha && form.sucursal_id && !esDomingo" class="warning-banner">
+                <q-icon name="warning" color="orange" size="24px" />
+                <span>No hay horarios disponibles para esta fecha</span>
               </div>
             </div>
 
@@ -273,6 +312,7 @@ import { ref, computed, watch } from 'vue'
 import { usePacienteStore } from 'stores/pacienteStore'
 import { useDentistaStore } from 'stores/dentistaStore'
 import { useSucursalStore } from 'stores/sucursalStore'
+import { useCitaStore } from 'stores/citaStore'
 
 export default {
   name: 'EditQuoteDialog',
@@ -291,11 +331,14 @@ export default {
     const pacienteStore = usePacienteStore()
     const dentistaStore = useDentistaStore()
     const sucursalStore = useSucursalStore()
+    const citaStore = useCitaStore()
 
     const loading = ref(false)
+    const cargandoHorarios = ref(false)
     const pacientesFiltrados = ref([])
     const dentistasFiltrados = ref([])
     const sucursalesFiltradas = ref([])
+    const todosHorarios = ref([])
 
     const form = ref({
       asunto: '',
@@ -331,6 +374,75 @@ export default {
       { label: 'Completada', value: 'completada' },
       { label: 'Cancelada', value: 'cancelada' }
     ]
+
+    // Funciones de horarios
+    const generarHorariosBase = () => {
+      const horarios = []
+      for (let h = 8; h < 18; h++) {
+        if (h === 12 || h === 13) continue
+        horarios.push(`${String(h).padStart(2, '0')}:00`)
+      }
+      return horarios
+    }
+
+    const esDomingo = computed(() => {
+      if (!form.value.fecha) return false
+      try {
+        const date = new Date(form.value.fecha + 'T00:00:00')
+        return date.getDay() === 0
+      } catch {
+        return false
+      }
+    })
+
+    const horariosDisponiblesCount = computed(() => {
+      return todosHorarios.value.filter(h => h.disponible).length
+    })
+
+    const dateOptions = (date) => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const selectedDate = new Date(date)
+      return selectedDate >= today
+    }
+
+    const onDateChange = async (newDate) => {
+      if (!newDate || !form.value.sucursal_id) {
+        todosHorarios.value = generarHorariosBase().map(hora => ({ hora, disponible: false }))
+        return
+      }
+
+      form.value.hora = ''
+      cargandoHorarios.value = true
+
+      try {
+        const horariosBase = generarHorariosBase()
+
+        const respuesta = await citaStore.obtenerHorariosDisponibles(
+          form.value.sucursal_id, 
+          newDate, 
+          form.value.dentista_id
+        )
+
+        let disponibles = []
+        if (respuesta?.horarios_disponibles) {
+          disponibles = respuesta.horarios_disponibles.map(hora => 
+            typeof hora === 'string' ? hora.substring(0, 5) : hora
+          )
+        }
+
+        todosHorarios.value = horariosBase.map(hora => ({
+          hora,
+          disponible: disponibles.includes(hora)
+        }))
+
+      } catch (error) {
+        console.error('Error cargando horarios:', error)
+        todosHorarios.value = generarHorariosBase().map(hora => ({ hora, disponible: false }))
+      } finally {
+        cargandoHorarios.value = false
+      }
+    }
 
     // Preparar opciones de sucursales dinámicamente
     const prepararOpcionesSucursales = () => {
@@ -418,7 +530,7 @@ export default {
     }
 
     // Inicializar formulario con datos de la cita
-    const initializeForm = () => {
+    const initializeForm = async () => {
       if (props.quote) {
         form.value = {
           asunto: props.quote.asunto || '',
@@ -428,8 +540,13 @@ export default {
           dentista_id: props.quote.dentista_id || null,
           sucursal_id: props.quote.sucursal_id || null,
           fecha: props.quote.fecha || '',
-          hora: props.quote.hora ? props.quote.hora.substring(0, 5) : '', // Solo HH:MM
+          hora: props.quote.hora ? props.quote.hora.substring(0, 5) : '',
           notas: props.quote.notas || ''
+        }
+        
+        // Cargar horarios si hay fecha y sucursal
+        if (form.value.fecha && form.value.sucursal_id) {
+          await onDateChange(form.value.fecha)
         }
       }
 
@@ -492,15 +609,28 @@ export default {
       }
     })
 
+    // Watch para recargar horarios cuando cambie sucursal o dentista
+    watch(() => [form.value.sucursal_id, form.value.dentista_id], () => {
+      if (form.value.fecha) {
+        onDateChange(form.value.fecha)
+      }
+    })
+
     return {
       showDialog,
       form,
       loading,
+      cargandoHorarios,
+      todosHorarios,
+      esDomingo,
+      horariosDisponiblesCount,
       tipoCitaOptions,
       estadoOptions,
       sucursalesFiltradas,
       pacientesFiltrados,
       dentistasFiltrados,
+      dateOptions,
+      onDateChange,
       filtrarPacientes,
       filtrarDentistas,
       filtrarSucursales,
@@ -601,6 +731,58 @@ export default {
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
 }
 
+.loading-horarios {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+.info-banner,
+.warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.warning-banner {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.horarios-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.horario-btn {
+  min-height: 40px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.hora-bloqueada {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.full-width-row {
+  display: block;
+}
+
+.field-group.full-width {
+  grid-column: 1 / -1;
+}
+
 .dialog-actions {
   padding: 16px 24px;
   justify-content: space-between;
@@ -627,6 +809,10 @@ export default {
 
   .field-row {
     grid-template-columns: 1fr;
+  }
+  
+  .horarios-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 </style>

@@ -274,10 +274,13 @@ export const useCitaStore = defineStore('cita', () => {
     loading.value = true
     try {
       const { data } = await citaService.getHorariosDisponibles(sucursalId, fecha, dentistaId)
-      return data.data
+      if (data && data.data) {
+        return data.data
+      }
+      return { horarios_disponibles: [], horarios_ocupados: [] }
     } catch (error) {
       console.error('Error obteniendo horarios:', error)
-      throw error
+      return { horarios_disponibles: [], horarios_ocupados: [] }
     } finally {
       loading.value = false
     }

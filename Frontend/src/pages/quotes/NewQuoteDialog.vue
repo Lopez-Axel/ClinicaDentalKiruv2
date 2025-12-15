@@ -210,36 +210,77 @@
 
             <q-separator spaced />
 
+            <q-separator spaced />
+
             <!-- Fecha y Hora -->
-            <div class="field-row">
-              <div class="field-group">
+            <div class="field-row full-width-row">
+              <div class="field-group full-width">
                 <label class="field-label">
                   <i class="fa-solid fa-calendar"></i>
                   <span>Fecha</span>
                   <span class="required">*</span>
                 </label>
-                <q-input
+                <q-date
                   v-model="form.fecha"
-                  filled
-                  dense
-                  type="date"
-                  :rules="[val => !!val || 'La fecha es requerida']"
+                  :options="dateOptions"
+                  mask="YYYY-MM-DD"
+                  minimal
+                  @update:model-value="onDateChange"
+                  class="full-width"
                 />
               </div>
+            </div>
 
-              <div class="field-group">
-                <label class="field-label">
-                  <i class="fa-solid fa-clock"></i>
-                  <span>Hora</span>
-                  <span class="required">*</span>
-                </label>
-                <q-input
-                  v-model="form.hora"
-                  filled
-                  dense
-                  type="time"
-                  :rules="[val => !!val || 'La hora es requerida']"
-                />
+            <!-- Horarios disponibles -->
+            <div class="field-group full-width">
+              <label class="field-label">
+                <i class="fa-solid fa-clock"></i>
+                <span>Hora</span>
+                <span class="required">*</span>
+              </label>
+
+              <div v-if="cargandoHorarios" class="loading-horarios">
+                <q-spinner color="primary" size="32px" />
+                <span class="text-grey-7">Verificando disponibilidad...</span>
+              </div>
+
+              <div v-else-if="!form.fecha" class="info-banner">
+                <q-icon name="info" color="blue" size="24px" />
+                <span>Primero selecciona una fecha</span>
+              </div>
+
+              <div v-else-if="!form.sucursal_id" class="info-banner">
+                <q-icon name="info" color="blue" size="24px" />
+                <span>Selecciona una sucursal para ver horarios disponibles</span>
+              </div>
+
+              <div v-else-if="esDomingo" class="warning-banner">
+                <q-icon name="event_busy" color="orange" size="24px" />
+                <span>Los domingos no se atiende</span>
+              </div>
+
+              <div v-else class="horarios-grid">
+                <q-btn
+                  v-for="horario in todosHorarios"
+                  :key="horario.hora"
+                  :label="horario.hora"
+                  :outline="form.hora !== horario.hora"
+                  :unelevated="form.hora === horario.hora"
+                  :disable="!horario.disponible"
+                  :color="horario.disponible ? (form.hora === horario.hora ? 'primary' : 'grey-7') : 'grey-4'"
+                  @click="horario.disponible && (form.hora = horario.hora)"
+                  :class="{'hora-bloqueada': !horario.disponible}"
+                  class="horario-btn"
+                >
+                  <q-tooltip v-if="!horario.disponible">
+                    Horario no disponible
+                  </q-tooltip>
+                </q-btn>
+              </div>
+
+              <div v-if="horariosDisponiblesCount === 0 && form.fecha && form.sucursal_id && !esDomingo" class="warning-banner">
+                <q-icon name="warning" color="orange" size="24px" />
+                <span>No hay horarios disponibles para esta fecha</span>
               </div>
             </div>
 
@@ -293,6 +334,7 @@ import { useQuasar } from 'quasar'
 import { usePacienteStore } from 'stores/pacienteStore'
 import { useDentistaStore } from 'stores/dentistaStore'
 import { useSucursalStore } from 'stores/sucursalStore'
+import { useCitaStore } from 'stores/citaStore'
 
 export default {
   name: 'NewQuoteDialog',
@@ -308,8 +350,10 @@ export default {
     const pacienteStore = usePacienteStore()
     const dentistaStore = useDentistaStore()
     const sucursalStore = useSucursalStore()
+    const citaStore = useCitaStore()
 
     const loading = ref(false)
+    const cargandoHorarios = ref(false)
     const searchCI = ref('')
     const pacientesFiltrados = ref([])
     const dentistasFiltrados = ref([])
@@ -317,7 +361,7 @@ export default {
 
     const form = ref({
       asunto: '',
-      tipo_cita: 'consulta', // Default
+      tipo_cita: 'consulta',
       paciente_id: null,
       dentista_id: null,
       sucursal_id: null,
@@ -325,6 +369,8 @@ export default {
       hora: '',
       notas: ''
     })
+
+    const todosHorarios = ref([])
 
     const showDialog = computed({
       get: () => props.modelValue,
@@ -340,6 +386,74 @@ export default {
       { label: 'Cirugía', value: 'cirugia' },
       { label: 'Otro', value: 'otro' }
     ]
+
+    const generarHorariosBase = () => {
+      const horarios = []
+      for (let h = 8; h < 18; h++) {
+        if (h === 12 || h === 13) continue
+        horarios.push(`${String(h).padStart(2, '0')}:00`)
+      }
+      return horarios
+    }
+
+    const esDomingo = computed(() => {
+      if (!form.value.fecha) return false
+      try {
+        const date = new Date(form.value.fecha + 'T00:00:00')
+        return date.getDay() === 0
+      } catch {
+        return false
+      }
+    })
+
+    const horariosDisponiblesCount = computed(() => {
+      return todosHorarios.value.filter(h => h.disponible).length
+    })
+
+    const dateOptions = (date) => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const selectedDate = new Date(date)
+      return selectedDate >= today
+    }
+
+    const onDateChange = async (newDate) => {
+      if (!newDate || !form.value.sucursal_id) {
+        todosHorarios.value = generarHorariosBase().map(hora => ({ hora, disponible: false }))
+        return
+      }
+
+      form.value.hora = ''
+      cargandoHorarios.value = true
+
+      try {
+        const horariosBase = generarHorariosBase()
+
+        const respuesta = await citaStore.obtenerHorariosDisponibles(
+          form.value.sucursal_id, 
+          newDate, 
+          form.value.dentista_id
+        )
+
+        let disponibles = []
+        if (respuesta?.horarios_disponibles) {
+          disponibles = respuesta.horarios_disponibles.map(hora => 
+            typeof hora === 'string' ? hora.substring(0, 5) : hora
+          )
+        }
+
+        todosHorarios.value = horariosBase.map(hora => ({
+          hora,
+          disponible: disponibles.includes(hora)
+        }))
+
+      } catch (error) {
+        console.error('Error cargando horarios:', error)
+        todosHorarios.value = generarHorariosBase().map(hora => ({ hora, disponible: false }))
+      } finally {
+        cargandoHorarios.value = false
+      }
+    }
 
     // Preparar opciones de sucursales dinámicamente
     const prepararOpcionesSucursales = () => {
@@ -398,13 +512,13 @@ export default {
           type: 'warning',
           message: 'Ingrese un número de CI',
           position: 'top',
-          timeout: 2000
+          icon: 'fa-solid fa-exclamation-triangle'
         })
         return
       }
 
-      const paciente = pacienteStore.pacientes.find(
-        p => p.state === 1 && String(p.ci) === String(searchCI.value.trim())
+      const paciente = pacienteStore.pacientes.find(p => 
+        p.ci === searchCI.value.trim() && p.state === 1
       )
 
       if (paciente) {
@@ -413,66 +527,74 @@ export default {
           type: 'positive',
           message: `Paciente encontrado: ${pacienteStore.getNombreCompleto(paciente)}`,
           position: 'top',
-          timeout: 2000
+          icon: 'fa-solid fa-check-circle'
         })
       } else {
         $q.notify({
           type: 'negative',
           message: 'No se encontró ningún paciente con ese CI',
           position: 'top',
-          timeout: 2000
+          icon: 'fa-solid fa-times-circle'
         })
       }
     }
 
-    // Filtrar pacientes (autocomplete)
+    // Filtrar pacientes
     const filtrarPacientes = (val, update) => {
       update(() => {
+        const needle = val.toLowerCase()
         const opciones = prepararOpcionesPacientes()
-        if (val === '') {
-          pacientesFiltrados.value = opciones
-        } else {
-          const needle = val.toLowerCase()
-          pacientesFiltrados.value = opciones.filter(p => 
-            p.nombre.toLowerCase().includes(needle) || 
-            p.ci.includes(needle)
-          )
-        }
+        pacientesFiltrados.value = needle === ''
+          ? opciones
+          : opciones.filter(v => v.label.toLowerCase().indexOf(needle) > -1)
       })
     }
 
-    // Filtrar dentistas (autocomplete)
+    // Filtrar dentistas
     const filtrarDentistas = (val, update) => {
       update(() => {
+        const needle = val.toLowerCase()
         const opciones = prepararOpcionesDentistas()
-        if (val === '') {
-          dentistasFiltrados.value = opciones
-        } else {
-          const needle = val.toLowerCase()
-          dentistasFiltrados.value = opciones.filter(d => 
-            d.nombre.toLowerCase().includes(needle)
-          )
-        }
+        dentistasFiltrados.value = needle === ''
+          ? opciones
+          : opciones.filter(v => v.label.toLowerCase().indexOf(needle) > -1)
       })
     }
 
-    // Filtrar sucursales (autocomplete)
+    // Filtrar sucursales
     const filtrarSucursales = (val, update) => {
       update(() => {
+        const needle = val.toLowerCase()
         const opciones = prepararOpcionesSucursales()
-        if (val === '') {
-          sucursalesFiltradas.value = opciones
-        } else {
-          const needle = val.toLowerCase()
-          sucursalesFiltradas.value = opciones.filter(s => 
-            s.label.toLowerCase().includes(needle)
-          )
-        }
+        sucursalesFiltradas.value = needle === ''
+          ? opciones
+          : opciones.filter(v => v.label.toLowerCase().indexOf(needle) > -1)
       })
     }
 
-    const resetForm = () => {
-      searchCI.value = ''
+    // Crear cita
+    const createQuote = async () => {
+      loading.value = true
+        const nuevaCita = {
+          paciente_id: form.value.paciente_id,
+          dentista_id: form.value.dentista_id,
+          sucursal_id: form.value.sucursal_id,
+          asunto: form.value.asunto,
+          fecha: form.value.fecha,
+          hora: form.value.hora,
+          tipo_cita: form.value.tipo_cita,
+          notas: form.value.notas,
+          estado: 'programada'
+        }
+
+        emit('quote-created', nuevaCita)
+        loading.value = false
+        closeDialog()
+      
+    }
+
+    // Cerrar dialog y resetear
+    const closeDialog = () => {
       form.value = {
         asunto: '',
         tipo_cita: 'consulta',
@@ -483,59 +605,29 @@ export default {
         hora: '',
         notas: ''
       }
-    }
-
-    const closeDialog = () => {
+      searchCI.value = ''
+      todosHorarios.value = []
       showDialog.value = false
-      resetForm()
     }
 
-    const createQuote = () => {
-      if (!form.value.paciente_id) {
-        $q.notify({
-          type: 'negative',
-          message: 'Debe seleccionar un paciente',
-          position: 'top',
-          timeout: 2000
-        })
-        return
-      }
-
-      if (!form.value.dentista_id) {
-        $q.notify({
-          type: 'negative',
-          message: 'Debe seleccionar un dentista',
-          position: 'top',
-          timeout: 2000
-        })
-        return
-      }
-
-      loading.value = true
-
-      const nuevaCita = {
-        asunto: form.value.asunto,
-        tipo_cita: form.value.tipo_cita,
-        estado: 'programada',
-        paciente_id: form.value.paciente_id,
-        dentista_id: form.value.dentista_id,
-        sucursal_id: form.value.sucursal_id,
-        fecha: form.value.fecha,
-        hora: form.value.hora,
-        notas: form.value.notas
-      }
-
-      emit('quote-created', nuevaCita)
-      loading.value = false
-      closeDialog()
-    }
-
-    // Inicializar opciones al abrir
-    watch(() => props.modelValue, (newValue) => {
-      if (newValue) {
+    // Cargar datos iniciales
+    watch(showDialog, async (newVal) => {
+      if (newVal) {
+        await Promise.all([
+          pacienteStore.cargarPacientes(),
+          dentistaStore.cargarDentistas(),
+          sucursalStore.cargarSucursales()
+        ])
         pacientesFiltrados.value = prepararOpcionesPacientes()
         dentistasFiltrados.value = prepararOpcionesDentistas()
         sucursalesFiltradas.value = prepararOpcionesSucursales()
+      }
+    })
+
+    // Watch para recargar horarios cuando cambie sucursal o dentista
+    watch(() => [form.value.sucursal_id, form.value.dentista_id], () => {
+      if (form.value.fecha) {
+        onDateChange(form.value.fecha)
       }
     })
 
@@ -543,18 +635,24 @@ export default {
       showDialog,
       form,
       loading,
+      cargandoHorarios,
       searchCI,
-      tipoCitaOptions,
-      sucursalesFiltradas,
       pacientesFiltrados,
       dentistasFiltrados,
+      sucursalesFiltradas,
       pacienteSeleccionado,
+      todosHorarios,
+      esDomingo,
+      horariosDisponiblesCount,
+      tipoCitaOptions,
+      dateOptions,
+      onDateChange,
       buscarPorCI,
       filtrarPacientes,
       filtrarDentistas,
       filtrarSucursales,
-      closeDialog,
-      createQuote
+      createQuote,
+      closeDialog
     }
   }
 }
@@ -562,26 +660,27 @@ export default {
 
 <style scoped>
 .new-dialog {
-  min-width: 700px;
-  max-width: 800px;
+  max-width: 700px;
+  width: 100%;
+  border-radius: 12px;
 }
 
 .dialog-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
   padding: 20px 24px;
 }
 
 .header-content {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
 }
 
 .header-title {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: white;
   font-size: 1.3rem;
   font-weight: 600;
 }
@@ -590,10 +689,16 @@ export default {
   color: white;
 }
 
+.form-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .dialog-content {
-  padding: 24px;
-  max-height: 70vh;
+  flex: 1;
   overflow-y: auto;
+  max-height: 60vh;
 }
 
 .form-fields {
@@ -608,123 +713,137 @@ export default {
   gap: 16px;
 }
 
+.full-width-row {
+  display: block;
+}
+
 .field-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.field-group.highlighted {
-  background: #f8f9fa;
-  padding: 16px;
-  border-radius: 8px;
-  border: 2px solid #e9ecef;
+.field-group.full-width {
+  grid-column: 1 / -1;
 }
 
 .field-label {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
-  color: #495057;
-  font-size: 0.95rem;
-}
-
-.field-label i {
-  color: #667eea;
-  width: 16px;
+  font-weight: 500;
+  color: #333;
 }
 
 .required {
-  color: #f5576c;
-  margin-left: 4px;
+  color: #f44336;
 }
 
-.search-row {
+.loading-horarios {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
 }
 
-.ci-input {
-  flex: 1;
-}
-
-.search-btn {
-  min-width: 40px;
-}
-
-.selected-info {
+.info-banner,
+.warning-banner {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
-  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
-  border-radius: 6px;
-  border-left: 4px solid #667eea;
+  padding: 16px;
+  border-radius: 8px;
+  background: #e3f2fd;
+  color: #1976d2;
 }
 
-.selected-info i {
-  color: #28a745;
-  font-size: 1.2rem;
+.warning-banner {
+  background: #fff3e0;
+  color: #f57c00;
 }
 
-.selected-info span {
-  font-weight: 600;
-  color: #212529;
+.horarios-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.horario-btn {
+  min-height: 40px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.hora-bloqueada {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.dialog-actions {
+  padding: 16px 24px;
+  gap: 12px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.secondary-btn {
+  min-width: 100px;
+}
+
+.primary-btn {
+  min-width: 140px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
 }
 
 .avatar-small {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.85rem;
 }
 
 .avatar-small.dentist {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  background: linear-gradient(135deg, #4caf50 0%, #66bb6a 100%);
 }
 
-.dialog-actions {
-  padding: 16px 24px;
-  justify-content: space-between;
+.selected-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #e8f5e9;
+  border-radius: 6px;
+  color: #2e7d32;
 }
 
-.secondary-btn {
-  color: #6c757d;
+.ci-input {
+  flex: 1;
 }
 
-.primary-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+.search-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.primary-btn:hover {
-  opacity: 0.9;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .new-dialog {
-    min-width: 90vw;
-  }
-
+@media (max-width: 600px) {
   .field-row {
     grid-template-columns: 1fr;
   }
-
-  .search-row {
-    flex-direction: column;
-  }
-
-  .ci-input {
-    width: 100%;
+  
+  .horarios-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 </style>

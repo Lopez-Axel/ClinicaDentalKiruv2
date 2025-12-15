@@ -28,6 +28,7 @@ export const useReserveStore = defineStore('reserva', () => {
   const dependientes = ref([])
   const servicios = ref([])
   const sucursales = ref([])
+  
   // Nueva reserva (formulario)
   const nuevaReserva = ref({
     patientType: 'me',
@@ -58,6 +59,7 @@ export const useReserveStore = defineStore('reserva', () => {
   })
 
   const usuarioAutenticado = computed(() => authStore.isAuthenticated)
+  const isAdmin = computed(() => authStore.userRole === 'ADMIN')
 
   // Reservas con información completa
   const reservasCompletas = computed(() => {
@@ -67,6 +69,20 @@ export const useReserveStore = defineStore('reserva', () => {
         ? dependientes.value.find(d => d.id === reserva.dependiente_id)
         : null
     }))
+  })
+
+  // Filtrado de reservas activas
+  const reservasFiltradas = computed(() => {
+    return reservas.value.filter(r => r.state === 'active')
+  })
+
+  // Estadísticas
+  const totalReservas = computed(() => reservasFiltradas.value.length)
+  const reservasPendientes = computed(() => {
+    return reservasFiltradas.value.filter(r => r.estado === 'pendiente').length
+  })
+  const reservasConfirmadas = computed(() => {
+    return reservasFiltradas.value.filter(r => r.estado === 'confirmada').length
   })
 
   // ============================================
@@ -101,11 +117,17 @@ export const useReserveStore = defineStore('reserva', () => {
 
     try {
       cargandoHistorial.value = true
-      console.log('📥 Cargando datos desde API...')
+      console.log('🔥 Cargando datos desde API...')
       
+      // Si es ADMIN, cargar todas las reservas
+      // Si es CLIENT, cargar solo las del usuario
+      const reservasPromise = isAdmin.value 
+        ? reservaService.getAllAdmin()
+        : reservaService.getAll()
+
       // Cargar en paralelo
       const [reservasResponse, dependientesResponse] = await Promise.all([
-        reservaService.getAll(),
+        reservasPromise,
         dependienteService.getAll()
       ])
 
@@ -114,7 +136,8 @@ export const useReserveStore = defineStore('reserva', () => {
       
       console.log('✅ Datos cargados:', {
         reservas: reservas.value.length,
-        dependientes: dependientes.value.length
+        dependientes: dependientes.value.length,
+        rol: isAdmin.value ? 'ADMIN' : 'CLIENT'
       })
     } catch (error) {
       console.error('❌ Error cargando datos:', error)
@@ -165,6 +188,21 @@ export const useReserveStore = defineStore('reserva', () => {
     }
   }
 
+  const hardDelete = async (idReserva) => {
+    try {
+      await reservaService.hardDelete(idReserva)
+      reservas.value = reservas.value.filter(r => r.id !== idReserva)
+      console.log('🗑️ Reserva eliminada permanentemente: ', idReserva)
+      return { success: true }
+    } catch (error) {
+      console.error('❌ Error al eliminar reserva de forma permanente:', error)
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al eliminar la reserva' 
+      }
+    }
+  }
+
   const cancelarReserva = async (idReserva) => {
     try {
       const response = await reservaService.cancelar(idReserva)
@@ -187,15 +225,111 @@ export const useReserveStore = defineStore('reserva', () => {
     }
   }
 
-  const cargarServicios = async () => {
-  try {
-    const response = await servicioService.getAll()
-    servicios.value = response.data|| []
-  } catch (error) {
-    console.error('Error al cargar servicios:', error)
-    servicios.value = []
+  // ============================================
+  // MÉTODOS - ADMIN (NUEVOS)
+  // ============================================
+  
+  const confirmarReserva = async (idReserva) => {
+    if (!isAdmin.value) {
+      console.warn('⚠️ Solo ADMIN puede confirmar reservas')
+      return { success: false, message: 'No autorizado' }
+    }
+
+    try {
+      const response = await reservaService.confirmar(idReserva)
+      const reservaActualizada = response.data.data
+      
+      // Actualizar en el array local
+      const index = reservas.value.findIndex(r => r.id === idReserva)
+      if (index !== -1) {
+        reservas.value[index] = reservaActualizada
+      }
+      
+      console.log('✅ Reserva confirmada:', idReserva)
+      return { success: true, data: reservaActualizada }
+    } catch (error) {
+      console.error('❌ Error al confirmar reserva:', error)
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al confirmar la reserva' 
+      }
+    }
   }
-}
+
+  const rechazarReserva = async (idReserva, motivo = '') => {
+    if (!isAdmin.value) {
+      console.warn('⚠️ Solo ADMIN puede rechazar reservas')
+      return { success: false, message: 'No autorizado' }
+    }
+
+    try {
+      const response = await reservaService.rechazar(idReserva, motivo)
+      const reservaActualizada = response.data.data
+      
+      // Actualizar en el array local
+      const index = reservas.value.findIndex(r => r.id === idReserva)
+      if (index !== -1) {
+        reservas.value[index] = reservaActualizada
+      }
+      
+      console.log('❌ Reserva rechazada:', idReserva)
+      return { success: true, data: reservaActualizada }
+    } catch (error) {
+      console.error('❌ Error al rechazar reserva:', error)
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al rechazar la reserva' 
+      }
+    }
+  }
+
+  const obtenerReservaPorId = async (id) => {
+    try {
+      const response = await reservaService.getById(id)
+      return { success: true, data: response.data.data }
+    } catch (error) {
+      console.error('❌ Error al obtener reserva:', error)
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al obtener la reserva' 
+      }
+    }
+  }
+
+  const actualizarReserva = async (id, reservaData) => {
+    try {
+      const response = await reservaService.update(id, reservaData)
+      const reservaActualizada = response.data.data
+      
+      const index = reservas.value.findIndex(r => r.id === id)
+      if (index !== -1) {
+        reservas.value[index] = reservaActualizada
+      }
+
+      console.log('📝 Reserva actualizada:', id)
+      return { success: true, data: reservaActualizada }
+    } catch (error) {
+      console.error('❌ Error al actualizar reserva:', error)
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Error al actualizar la reserva' 
+      }
+    }
+  }
+
+  // ============================================
+  // MÉTODOS - SERVICIOS Y SUCURSALES
+  // ============================================
+
+  const cargarServicios = async () => {
+    try {
+      const response = await servicioService.getAll()
+      servicios.value = response.data || []
+    } catch (error) {
+      console.error('Error al cargar servicios:', error)
+      servicios.value = []
+    }
+  }
 
   const cargarSucursales = async () => {
     try {
@@ -206,7 +340,6 @@ export const useReserveStore = defineStore('reserva', () => {
       sucursales.value = []
     }
   }
-
 
   // ============================================
   // MÉTODOS - CRUD DEPENDIENTES
@@ -237,11 +370,13 @@ export const useReserveStore = defineStore('reserva', () => {
   const obtenerHorariosDisponibles = async (sucursalId, fechaReserva) => {
     try {
       const response = await reservaService.getHorariosDisponibles(sucursalId, fechaReserva)
-      return response.data.data.horarios_disponibles
+      if (response.data && response.data.data) {
+        return response.data.data
+      }
+      return { horarios_disponibles: [], horarios_ocupados: [] }
     } catch (error) {
-      console.error('❌ Error al obtener horarios:', error)
-      // Fallback: horarios predeterminados si falla
-      return Array.from({ length: 13 }, (_, i) => `${(i + 8).toString().padStart(2, '0')}:00`)
+      console.error('Error obteniendo horarios:', error)
+      return { horarios_disponibles: [], horarios_ocupados: [] }
     }
   }
 
@@ -275,7 +410,6 @@ export const useReserveStore = defineStore('reserva', () => {
   
   const cerrarModalFormulario = () => {
     showFormModal.value = false
-    // El watch se encarga de resetear el formulario
   }
 
   // Modal de historial (AppointmentHistory)
@@ -285,7 +419,6 @@ export const useReserveStore = defineStore('reserva', () => {
       return false
     }
     showHistoryModal.value = true
-    // El watch se encarga de cargar los datos
     return true
   }
   
@@ -391,10 +524,27 @@ export const useReserveStore = defineStore('reserva', () => {
   }
 
   // ============================================
+  // HELPERS
+  // ============================================
+  
+  const formatearFecha = (fecha) => {
+    if (!fecha) return 'Sin fecha'
+    try {
+      return new Date(fecha).toLocaleDateString('es-ES')
+    } catch {
+      return 'Inválida'
+    }
+  }
+
+  const formatearHora = (hora) => {
+    if (!hora) return '--:--'
+    return hora.substring(0, 5)
+  }
+
+  // ============================================
   // COMPATIBILIDAD CON CÓDIGO EXISTENTE
   // ============================================
   
-  // Mantener métodos antiguos para no romper código existente
   const abrirModal = abrirModalFormulario
   const cerrarModal = cerrarModalFormulario
 
@@ -414,7 +564,7 @@ export const useReserveStore = defineStore('reserva', () => {
   // ============================================
   
   return {
-    // Estado de modales (NUEVA API)
+    // Estado de modales
     showSelectionModal,
     showFormModal,
     showHistoryModal,
@@ -423,13 +573,21 @@ export const useReserveStore = defineStore('reserva', () => {
     cargandoNuevaReserva,
     cargandoHistorial,
     usuarioAutenticado,
+    isAdmin,
     
     // Datos
     reservas,
     dependientes,
     reservasCompletas,
+    reservasFiltradas,
     servicios,
-    sucursales,    
+    sucursales,
+    
+    // Estadísticas
+    totalReservas,
+    reservasPendientes,
+    reservasConfirmadas,
+    
     // Formulario
     nuevaReserva,
     pacienteOtro,
@@ -440,14 +598,20 @@ export const useReserveStore = defineStore('reserva', () => {
     cargarDatos,
     crearReserva,
     eliminarReserva,
+    hardDelete,
     cancelarReserva,
     crearDependiente,
     obtenerHorariosDisponibles,
-
     cargarServicios,
     cargarSucursales,
     
-    // Métodos de control de modales (NUEVA API)
+    // Métodos ADMIN (nuevos)
+    confirmarReserva,
+    rechazarReserva,
+    obtenerReservaPorId,
+    actualizarReserva,
+    
+    // Métodos de control de modales
     abrirModalSeleccion,
     cerrarModalSeleccion,
     abrirModalFormulario,
@@ -463,6 +627,10 @@ export const useReserveStore = defineStore('reserva', () => {
     seleccionarServicio,
     seleccionarClinica,
     enviarReserva,
+    
+    // Helpers
+    formatearFecha,
+    formatearHora,
     
     // Compatibilidad con código existente
     modalAbierto,

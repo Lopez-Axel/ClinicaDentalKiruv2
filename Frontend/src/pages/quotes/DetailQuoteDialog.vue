@@ -91,7 +91,7 @@
               <i class="fa-solid fa-building"></i>
               <span>Sucursal</span>
             </div>
-            <div class="detail-value">Sucursal #{{ quote.sucursal_id }}</div>
+            <div class="detail-value">{{ getSucursalName(quote.sucursal_id) }}</div>
           </div>
 
           <q-separator spaced />
@@ -174,6 +174,7 @@
 import { computed } from 'vue'
 import { usePacienteStore } from 'stores/pacienteStore'
 import { useDentistaStore } from 'stores/dentistaStore'
+import { useSucursalStore } from 'stores/sucursalStore'
 
 export default {
   name: 'DetailQuoteDialog',
@@ -191,6 +192,7 @@ export default {
   setup(props, { emit }) {
     const pacienteStore = usePacienteStore()
     const dentistaStore = useDentistaStore()
+    const sucursalStore = useSucursalStore()
 
     const showDialog = computed({
       get: () => props.modelValue,
@@ -209,6 +211,12 @@ export default {
       const dentista = dentistaStore.dentistas.find(d => d.id === id)
       if (!dentista) return 'Dentista no encontrado'
       return `${dentista.nombre} ${dentista.apellido_paterno || ''}`.trim()
+    }
+
+    const getSucursalName = (id) => {
+      const sucursal = sucursalStore.sucursales.find(s => s.id === id)
+      if (!sucursal) return 'Sucursal no encontrada'
+      return `${sucursal.nombre}`
     }
 
     // Obtener iniciales del paciente
@@ -300,6 +308,7 @@ export default {
       showDialog,
       getPacienteName,
       getDentistaName,
+      getSucursalName,
       getPatientInitials,
       getDentistInitials,
       formatearFecha,

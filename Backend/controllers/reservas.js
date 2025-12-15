@@ -1,5 +1,7 @@
 const reservaModel = require('../models/reservas');
 const dependienteModel = require('../models/dependientes');
+const emailService = require('../services/email.services');
+const usuarioModel = require('../models/users'); 
 
 module.exports = {
   // Listar todas las reservas del usuario autenticado
@@ -249,7 +251,7 @@ module.exports = {
       const { estado } = req.body;
 
       // Validar estado
-      const estadosValidos = ['pendiente', 'confirmada', 'cancelada', 'completada'];
+      const estadosValidos = ['pendiente', 'confirmada', 'cancelada', 'completada', 'rechazada'];
       if (!estadosValidos.includes(estado)) {
         return res.status(400).json({
           success: 0,
@@ -405,6 +407,202 @@ module.exports = {
       return res.status(500).json({
         success: 0,
         message: 'Error al obtener estadísticas'
+      });
+    }
+  },
+
+  // ============================================
+  // NUEVOS MÉTODOS - GESTIÓN ADMINISTRATIVA
+  // ============================================
+
+  // Confirmar reserva (ADMIN/DENTISTA)
+  confirmar: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Obtener reserva con todos los datos necesarios
+      const reserva = await reservaModel.obtenerReservaCompleta(id);
+
+      if (!reserva) {
+        return res.status(404).json({
+          success: 0,
+          message: 'Reserva no encontrada'
+        });
+      }
+
+      // Verificar que está pendiente
+      if (reserva.estado !== 'pendiente') {
+        return res.status(400).json({
+          success: 0,
+          message: `La reserva ya está ${reserva.estado}`
+        });
+      }
+
+      // Cambiar estado a confirmada
+      await reservaModel.cambiarEstado(id, 'confirmada');
+
+      // Obtener información del usuario
+      const usuario = await usuarioModel.obtenerPorId(reserva.user_id);
+
+      // Preparar datos para email
+      const reservaEmail = {
+        fecha_reserva: reserva.fecha_reserva,
+        hora_reserva: reserva.hora_reserva,
+        servicio: { nombre: reserva.servicio_nombre },
+        sucursal: { 
+          nombre: reserva.sucursal_nombre,
+          direccion: reserva.sucursal_direccion
+        },
+        dependiente: reserva.dependiente_nombre ? { 
+          nombre_completo: reserva.dependiente_nombre 
+        } : null
+      };
+
+      const datosUsuario = {
+        email: usuario.email,
+        nombre: usuario.username
+      };
+
+      // Enviar email de confirmación
+      try {
+        await emailService.enviarEmailConfirmacion(reservaEmail, datosUsuario);
+        console.log('✅ Email de confirmación enviado a:', usuario.email);
+      } catch (emailError) {
+        console.error('❌ Error al enviar email:', emailError);
+        // No retornamos error porque la reserva ya fue confirmada
+      }
+
+      return res.status(200).json({
+        success: 1,
+        message: 'Reserva confirmada y email enviado exitosamente',
+        data: { id, estado: 'confirmada' }
+      });
+
+    } catch (err) {
+      console.error('Error en confirmar:', err);
+      return res.status(500).json({
+        success: 0,
+        message: 'Error al confirmar la reserva'
+      });
+    }
+  },
+
+  // Rechazar reserva (ADMIN/DENTISTA)
+  rechazar: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { motivo } = req.body;
+
+      // Validar motivo
+      if (!motivo || motivo.trim() === '') {
+        return res.status(400).json({
+          success: 0,
+          message: 'Debe proporcionar un motivo de rechazo'
+        });
+      }
+
+      // Obtener reserva con todos los datos necesarios
+      const reserva = await reservaModel.obtenerReservaCompleta(id);
+
+      if (!reserva) {
+        return res.status(404).json({
+          success: 0,
+          message: 'Reserva no encontrada'
+        });
+      }
+
+      // Verificar que está pendiente
+      if (reserva.estado !== 'pendiente') {
+        return res.status(400).json({
+          success: 0,
+          message: `La reserva ya está ${reserva.estado}`
+        });
+      }
+
+      // Cambiar estado a rechazada y guardar motivo
+      await reservaModel.cambiarEstado(id, 'rechazada');
+      await reservaModel.actualizarNotas(id, motivo.trim());
+
+      // Obtener información del usuario
+      const usuario = await usuarioModel.obtenerPorId(reserva.user_id);
+
+      // Preparar datos para email
+      const reservaEmail = {
+        fecha_reserva: reserva.fecha_reserva,
+        hora_reserva: reserva.hora_reserva,
+        servicio: { nombre: reserva.servicio_nombre },
+        sucursal: { nombre: reserva.sucursal_nombre }
+      };
+
+      const datosUsuario = {
+        email: usuario.email,
+        nombre: usuario.nombre
+      };
+
+      // Enviar email de rechazo
+      try {
+        await emailService.enviarEmailRechazo(reservaEmail, datosUsuario, motivo.trim());
+        console.log('📧 Email de rechazo enviado a:', usuario.email);
+      } catch (emailError) {
+        console.error('❌ Error al enviar email:', emailError);
+        // No retornamos error porque la reserva ya fue rechazada
+      }
+
+      return res.status(200).json({
+        success: 1,
+        message: 'Reserva rechazada y email enviado exitosamente',
+        data: { id, estado: 'rechazada', motivo: motivo.trim() }
+      });
+
+    } catch (err) {
+      console.error('Error en rechazar:', err);
+      return res.status(500).json({
+        success: 0,
+        message: 'Error al rechazar la reserva'
+      });
+    }
+  },
+
+  listarTodas: async (req, res) => {
+    try {
+
+      const results = await reservaModel.listado();
+      
+      return res.status(200).json({
+        success: 1,
+        data: results
+      });
+    } catch (err) {
+      console.error('Error en listarTodas:', err);
+      return res.status(500).json({
+        success: 0,
+        message: 'Error al obtener reservas'
+      });
+    }
+  },
+
+  hardDelete: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const affectedRows = await reservaModel.harddelete(id);
+
+      if (affectedRows === 0) {
+        return res.status(404).json({
+          success: 0,
+          message: 'Reserva no encontrada'
+        });
+      }
+
+      return res.status(200).json({
+        success: 1,
+        message: 'Reserva eliminada permanentemente'
+      });
+    } catch (err) {
+      console.error('Error en harddelete:', err);
+      return res.status(500).json({
+        success: 0,
+        message: 'Error al eliminar la reserva permanentemente'
       });
     }
   }

@@ -407,13 +407,6 @@ export default defineComponent({
             icon: 'folder_open',
             color: 'teal',
             route: '/history'
-          },
-          {
-            title: 'Mi Perfil',
-            description: 'Datos personales',
-            icon: 'account_circle',
-            color: 'purple',
-            route: '/profile'
           }
         ]
       }
@@ -453,11 +446,11 @@ export default defineComponent({
         ],
         CLIENT: [
           {
-            title: 'Completa tu perfil',
-            description: 'Añade más información para mejorar tu experiencia',
-            icon: 'person_add',
+            title: 'Revisa tus reservas próximas',
+            description: 'Asegúrate de estar al tanto de tus citas agendadas',
+            icon: 'event_available',
             color: 'teal',
-            route: '/profile'
+            route: '/reserves'
           }
         ]
       }

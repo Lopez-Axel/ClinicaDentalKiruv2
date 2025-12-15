@@ -13,7 +13,9 @@
           </div>
           <div>
             <h1 class="reserve-page-title">Gestión de Reservas</h1>
-            <p class="reserve-page-subtitle">Administra las reservas de pacientes y sus dependientes</p>
+            <p class="reserve-page-subtitle">
+              {{ isAdmin ? 'Administra todas las reservas de pacientes' : 'Administra tus reservas y las de tus dependientes' }}
+            </p>
           </div>
         </div>
       </div>
@@ -26,7 +28,7 @@
           <i class="fa-solid fa-calendar-days"></i>
         </div>
         <div class="reserve-stat-content">
-          <div class="reserve-stat-value">{{ filteredRows.length }}</div>
+          <div class="reserve-stat-value">{{ totalReservas }}</div>
           <div class="reserve-stat-label">Total de Reservas</div>
         </div>
         <div class="reserve-stat-glow total"></div>
@@ -89,8 +91,14 @@
       </div>
     </div>
 
+    <!-- Loading State -->
+    <div v-if="cargandoHistorial" class="reserve-loading-state">
+      <q-spinner size="50px" color="primary" />
+      <p>Cargando reservas...</p>
+    </div>
+
     <!-- Table Section -->
-    <div class="reserve-table-container">
+    <div v-else class="reserve-table-container">
       <div class="reserve-table-header">
         <div class="reserve-table-title-section">
           <h3 class="reserve-table-title">Lista de Reservas</h3>
@@ -134,7 +142,7 @@
               </div>
               <div class="reserve-date-content">
                 <div class="reserve-date-label">Fecha</div>
-                <div class="reserve-date-value">{{ formatDate(props.row.fechaReserva) }}</div>
+                <div class="reserve-date-value">{{ formatDate(props.row.fecha_reserva) }}</div>
               </div>
             </div>
           </q-td>
@@ -148,7 +156,7 @@
               </div>
               <div class="reserve-time-content">
                 <div class="reserve-time-label">Hora</div>
-                <div class="reserve-time-value">{{ props.row.horaReserva }}</div>
+                <div class="reserve-time-value">{{ formatTime(props.row.hora_reserva) }}</div>
               </div>
             </div>
           </q-td>
@@ -159,24 +167,24 @@
             <div class="reserve-patient-info">
               <div class="reserve-patient-main">
                 <div class="reserve-patient-avatar">
-                  {{ getPatientInitials(props.row.nombreCompleto) }}
+                  {{ getPatientInitials(props.row.titular_nombre) }}
                 </div>
                 <div class="reserve-patient-content">
-                  <div class="reserve-patient-name">{{ props.row.nombreCompleto }}</div>
+                  <div class="reserve-patient-name">{{ props.row.titular_nombre }}</div>
                   <div class="reserve-patient-email">
                     <i class="fa-solid fa-envelope"></i>
-                    {{ props.row.gmail }}
+                    {{ props.row.titular_email }}
                   </div>
                 </div>
               </div>
-              <div v-if="props.row.dependiente" class="reserve-dependiente-info">
+              <div v-if="props.row.dependiente_nombre" class="reserve-dependiente-info">
                 <div class="reserve-dependiente-badge">
                   <i class="fa-solid fa-user-friends"></i>
-                  Dependiente: {{ props.row.dependiente.nombreCompleto }}
+                  Dependiente: {{ props.row.dependiente_nombre }}
                 </div>
-                <div class="reserve-dependiente-relation">
+                <div v-if="props.row.parentesco" class="reserve-dependiente-relation">
                   <i class="fa-solid fa-heart"></i>
-                  {{ props.row.dependiente.parentesco }}
+                  {{ props.row.parentesco }}
                 </div>
               </div>
             </div>
@@ -187,7 +195,7 @@
           <q-td :props="props">
             <div class="reserve-service-badge">
               <i class="fa-solid fa-stethoscope"></i>
-              {{ props.row.servicio }}
+              {{ props.row.servicio_nombre }}
             </div>
           </q-td>
         </template>
@@ -200,9 +208,18 @@
               </div>
               <div class="reserve-branch-content">
                 <div class="reserve-branch-label">Sucursal</div>
-                <div class="reserve-branch-value">{{ props.row.sucursal }}</div>
+                <div class="reserve-branch-value">{{ props.row.sucursal_nombre }}</div>
               </div>
             </div>
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-estado="props">
+          <q-td :props="props">
+            <q-badge 
+              :color="getEstadoColor(props.row.estado)" 
+              :label="formatEstado(props.row.estado)"
+            />
           </q-td>
         </template>
 
@@ -222,6 +239,7 @@
                 <q-tooltip>Ver detalles</q-tooltip>
               </q-btn>
               <q-btn
+                v-if="isAdmin && props.row.estado === 'pendiente'"
                 class="reserve-action-btn reserve-confirm-btn"
                 flat
                 dense
@@ -234,6 +252,7 @@
                 <q-tooltip>Confirmar reserva</q-tooltip>
               </q-btn>
               <q-btn
+                v-if="isAdmin && props.row.estado === 'pendiente'"
                 class="reserve-action-btn reserve-reject-btn"
                 flat
                 dense
@@ -255,44 +274,31 @@
     <DetailReserveDialog
       v-model="showDetailDialog"
       :reserveData="selectedReserve"
+      @refresh="loadReservas"
     />
 
-    <!-- Reject Confirmation Dialog -->
-    <q-dialog v-model="showRejectDialog" persistent>
-      <q-card class="reserve-confirm-dialog">
+    <q-dialog v-model="showRejectDialog">
+      <q-card class="reserve-reject-dialog">
         <q-card-section class="reserve-dialog-header">
           <div class="reserve-dialog-icon-container">
-            <i class="fa-solid fa-exclamation-triangle reserve-dialog-icon"></i>
+            <i class="fa-solid fa-exclamation-triangle"></i>
           </div>
-          <h3 class="reserve-dialog-title">Confirmar Rechazo</h3>
+          <div class="reserve-dialog-title">Rechazar Reserva</div>
+          <p class="reserve-dialog-subtitle">
+            ¿Está seguro de rechazar la reserva de
+            <strong>{{ selectedReserve?.titular_nombre }}</strong>?
+          </p>
         </q-card-section>
 
-        <q-card-section class="q-pt-none">
-          <p class="reserve-dialog-text">
-            ¿Está seguro que desea rechazar la reserva de <strong>{{ selectedReserve?.nombreCompleto }}</strong>?
-          </p>
-          <p class="reserve-dialog-subtext" v-if="selectedReserve?.dependiente">
-            <i class="fa-solid fa-user-friends"></i>
-            También se rechazará la reserva del dependiente: <strong>{{ selectedReserve.dependiente.nombreCompleto }}</strong>
-          </p>
-          <div class="reserve-dialog-details">
-            <div class="reserve-detail-item">
-              <i class="fa-solid fa-calendar-day"></i>
-              <span>Fecha: {{ formatDate(selectedReserve?.fechaReserva) }}</span>
-            </div>
-            <div class="reserve-detail-item">
-              <i class="fa-solid fa-clock"></i>
-              <span>Hora: {{ selectedReserve?.horaReserva }}</span>
-            </div>
-            <div class="reserve-detail-item">
-              <i class="fa-solid fa-stethoscope"></i>
-              <span>Servicio: {{ selectedReserve?.servicio }}</span>
-            </div>
-          </div>
-          <p class="reserve-dialog-warning">
-            <i class="fa-solid fa-triangle-exclamation"></i>
-            Esta acción no se puede deshacer.
-          </p>
+        <q-card-section class="reserve-dialog-content">
+          <q-input
+            v-model="rejectMotivo"
+            type="textarea"
+            label="Motivo del rechazo"
+            outlined
+            rows="3"
+            class="reserve-dialog-textarea"
+          />
         </q-card-section>
 
         <q-card-actions class="reserve-dialog-actions">
@@ -323,23 +329,24 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { useQuasar } from 'quasar'
 import { useReserveStore } from 'src/stores/reservaStore'
+import { useAuthStore } from 'src/stores/authStore'
 import Fuse from 'fuse.js'
 import DetailReserveDialog from './DetailReserveDialog.vue'
 
 const columns = [
   {
     name: 'fechaReserva',
-    label: 'Fecha Reserva',
+    label: 'Fecha',
     align: 'center',
-    field: 'fechaReserva',
+    field: row => row.fecha_reserva,
     sortable: true,
     style: 'width: 140px'
   },
   {
     name: 'horaReserva',
-    label: 'Hora Reserva',
+    label: 'Hora',
     align: 'center',
-    field: 'horaReserva',
+    field: row => row.hora_reserva,
     sortable: true,
     style: 'width: 120px'
   },
@@ -347,7 +354,7 @@ const columns = [
     name: 'nombreCompleto',
     label: 'Paciente',
     align: 'left',
-    field: 'nombreCompleto',
+    field: row => row.titular_nombre,
     sortable: true,
     style: 'min-width: 250px'
   },
@@ -355,7 +362,7 @@ const columns = [
     name: 'servicio',
     label: 'Servicio',
     align: 'center',
-    field: 'servicio',
+    field: row => row.servicio_nombre,
     sortable: true,
     style: 'width: 160px'
   },
@@ -363,9 +370,17 @@ const columns = [
     name: 'sucursal',
     label: 'Sucursal',
     align: 'center',
-    field: 'sucursal',
+    field: row => row.sucursal_nombre,
     sortable: true,
     style: 'width: 150px'
+  },
+  {
+    name: 'estado',
+    label: 'Estado',
+    align: 'center',
+    field: row => row.estado,
+    sortable: true,
+    style: 'width: 120px'
   },
   {
     name: 'actions',
@@ -379,14 +394,14 @@ const columns = [
 
 const FUSE_OPTIONS = {
   keys: [
-    'nombreCompleto', 
-    'gmail', 
-    'fechaReserva', 
-    'horaReserva',
-    'servicio',
-    'sucursal',
-    'dependiente.nombreCompleto',
-    'dependiente.parentesco'
+    'titular_nombre', 
+    'titular_email', 
+    'fecha_reserva', 
+    'hora_reserva',
+    'servicio_nombre',
+    'sucursal_nombre',
+    'dependiente_nombre',
+    'parentesco'
   ],
   threshold: 0.3,
   includeScore: true,
@@ -401,40 +416,44 @@ export default {
   setup() {
     const $q = useQuasar()
     const reservaStore = useReserveStore()
+    const authStore = useAuthStore()
 
     const search = ref('')
     const selectedReserve = ref(null)
     const showDetailDialog = ref(false)
     const showRejectDialog = ref(false)
+    const rejectMotivo = ref('')
     let fuse = null
 
-    const allReservas = computed(() => reservaStore.reservas || [])
+    const isAdmin = computed(() => authStore.userRole === 'ADMIN')
+    const allReservas = computed(() => reservaStore.reservasCompletas || [])
+    const cargandoHistorial = computed(() => reservaStore.cargandoHistorial)
     const filteredRows = ref([])
 
-    // Estadísticas mejoradas
+    const totalReservas = computed(() => reservaStore.totalReservas)
+    const reservasPendientes = computed(() => reservaStore.reservasPendientes)
+
     const reservasConDependientes = computed(() => {
-      return allReservas.value.filter(row => row.dependiente).length
+      return allReservas.value.filter(row => row.dependiente_nombre).length
     })
 
     const reservasHoy = computed(() => {
       const today = new Date().toISOString().split('T')[0]
-      return allReservas.value.filter(row => {
-        const reservaDate = formatDateForFilter(row.fechaReserva)
-        return reservaDate === today
-      }).length
+      return allReservas.value.filter(row => row.fecha_reserva === today).length
     })
 
-    const reservasPendientes = computed(() => {
-      const today = new Date().toISOString().split('T')[0]
-      return allReservas.value.filter(row => {
-        const reservaDate = formatDateForFilter(row.fechaReserva)
-        return reservaDate >= today
-      }).length
-    })
-
-    const loadReservas = () => {
-      filteredRows.value = allReservas.value
-      initializeFuse()
+    const loadReservas = async () => {
+      try {
+        await reservaStore.cargarDatos()
+        filteredRows.value = allReservas.value
+        initializeFuse()
+      } catch (error) {
+        $q.notify({
+          type: 'negative',
+          message: 'Error al cargar reservas' + error.message,
+          position: 'top'
+        })
+      }
     }
 
     const initializeFuse = () => {
@@ -450,26 +469,63 @@ export default {
       filteredRows.value = results.map(result => result.item)
     }
 
-    const rejectReserve = () => {
+    const rejectReserve = async () => {
       if (!selectedReserve.value) return
       
-      reservaStore.eliminarReserva(selectedReserve.value.id)
-      
-      $q.notify({
-        type: 'positive',
-        message: 'Reserva eliminada exitosamente',
-        position: 'top',
-        icon: 'fa-solid fa-check-circle'
-      })
+      try {
+        const resultado = await reservaStore.rechazarReserva(selectedReserve.value.id, rejectMotivo.value)
+        rejectMotivo.value = ''
+        
+        if (resultado.success) {
+          $q.notify({
+            type: 'positive',
+            message: 'Reserva rechazada exitosamente',
+            position: 'top',
+            icon: 'fa-solid fa-check-circle'
+          })
+          await loadReservas()
+        } else {
+          $q.notify({
+            type: 'negative',
+            message: resultado.message || 'Error al rechazar reserva',
+            position: 'top'
+          })
+        }
+      } catch (error) {
+        $q.notify({
+          type: 'negative',
+          message: 'Error al rechazar reserva' + error.message,
+          position: 'top'
+        })
+      }
     }
 
-    const confirmReserve = (reserve) => {
-      $q.notify({
-        type: 'info',
-        message: `Reserva de ${reserve.nombreCompleto} confirmada`,
-        position: 'top',
-        icon: 'fa-solid fa-calendar-check'
-      })
+    const confirmReserve = async (reserve) => {
+      try {
+        const resultado = await reservaStore.confirmarReserva(reserve.id)
+        
+        if (resultado.success) {
+          $q.notify({
+            type: 'positive',
+            message: `Reserva de ${reserve.titular_nombre} confirmada`,
+            position: 'top',
+            icon: 'fa-solid fa-calendar-check'
+          })
+          await loadReservas()
+        } else {
+          $q.notify({
+            type: 'negative',
+            message: resultado.message || 'Error al confirmar reserva',
+            position: 'top'
+          })
+        }
+      } catch (error) {
+        $q.notify({
+          type: 'negative',
+          message: 'Error al confirmar reserva' + error.message,
+          position: 'top'
+        })
+      }
     }
 
     const viewReserve = (reserve) => {
@@ -485,27 +541,49 @@ export default {
     const formatDate = (dateString) => {
       if (!dateString) return 'No disponible'
       try {
-        if (dateString.includes('-')) {
+        const date = new Date(dateString)
+        if (isNaN(date.getTime())) {
           const [year, month, day] = dateString.split('-')
           return `${day}/${month}/${year}`
         }
-        return dateString
+        return date.toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        })
       } catch {
         return 'Fecha inválida'
       }
     }
 
-    const formatDateForFilter = (dateString) => {
-      if (!dateString) return ''
+    const formatTime = (timeString) => {
+      if (!timeString) return 'No disponible'
       try {
-        if (dateString.includes('/')) {
-          const [day, month, year] = dateString.split('/')
-          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-        }
-        return dateString
+        const [hours, minutes] = timeString.split(':')
+        return `${hours}:${minutes}`
       } catch {
-        return ''
+        return 'Hora inválida'
       }
+    }
+
+    const formatEstado = (estado) => {
+      const estados = {
+        'pendiente': 'Pendiente',
+        'confirmada': 'Confirmada',
+        'cancelada': 'Cancelada',
+        'completada': 'Completada'
+      }
+      return estados[estado] || estado
+    }
+
+    const getEstadoColor = (estado) => {
+      const colores = {
+        'pendiente': 'warning',
+        'confirmada': 'positive',
+        'cancelada': 'negative',
+        'completada': 'info'
+      }
+      return colores[estado] || 'grey'
     }
 
     const getPatientInitials = (name) => {
@@ -517,10 +595,8 @@ export default {
       return (words[0][0] + (words[1]?.[0] || '')).toUpperCase()
     }
 
-    onMounted(() => {
-      loadReservas()
-      reservaStore.cargarDatos()
-      console.log('Reservas cargadas:', reservaStore.reservas)
+    onMounted(async () => {
+      await loadReservas()
     })
 
     watch(search, () => {
@@ -528,7 +604,8 @@ export default {
     })
 
     watch(allReservas, () => {
-      loadReservas()
+      filteredRows.value = allReservas.value
+      initializeFuse()
     })
 
     return {
@@ -538,6 +615,10 @@ export default {
       selectedReserve,
       showDetailDialog,
       showRejectDialog,
+      rejectMotivo,
+      isAdmin,
+      cargandoHistorial,
+      totalReservas,
       reservasConDependientes,
       reservasHoy,
       reservasPendientes,
@@ -547,9 +628,12 @@ export default {
       viewReserve,
       confirmRejectReserve,
       formatDate,
-      getPatientInitials
+      formatTime,
+      formatEstado,
+      getEstadoColor,
+      getPatientInitials,
+      loadReservas
     }
   }
 }
 </script>
-

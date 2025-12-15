@@ -8,7 +8,7 @@ import DashboardLayout from 'layouts/DashboardLayout.vue'
  */
 export const rolePermissions = {
   DENTIST: ['dashboard', 'patients', 'reserves', 'calendar', 'odontogram', 'quotes', 'historyQuotes'],
-  CLIENT: ['dashboard', 'reserves', 'quotes', 'historyQuotes'],
+  CLIENT: ['dashboard', 'reserves'],
   ADMIN: ['dashboard', 'users', 'dentist', 'specialties', 'announcements', 'branches', 'patients', 'reserves', 'quotes', 'historyQuotes', 'calendar', 'odontogram', 'statistics', 'purchase', 'servicio']
 }
 
@@ -130,14 +130,6 @@ export const dashboardMenuConfig = {
       icon: 'event',
       to: '/reserves',
       permission: 'reserves'
-    },
-    {
-      title: 'Mis Tratamientos',
-      icon: 'healing',
-      children: [
-        { title: 'Cotizaciones', icon: 'attach_money', to: '/quotes', permission: 'quotes' },
-        { title: 'Historial', icon: 'history', to: '/HistoryQuotes', permission: 'historyQuotes' }
-      ]
     }
   ]
 }
@@ -317,7 +309,7 @@ const routes = [
         component: () => import('pages/quotes/QuotesPage.vue'),
         meta: {
           requiresAuth: true,
-          roles: ['DENTIST', 'CLIENT', 'ADMIN'],
+          roles: ['DENTIST', 'ADMIN'],
           title: 'Cotizaciones'
         }
       },
@@ -327,7 +319,7 @@ const routes = [
         component: () => import('pages/HistoryQuotes/HistoryQuotesPage.vue'),
         meta: {
           requiresAuth: true,
-          roles: ['DENTIST', 'CLIENT', 'ADMIN'],
+          roles: ['DENTIST', 'ADMIN'],
           title: 'Historial de Cotizaciones'
         }
       },

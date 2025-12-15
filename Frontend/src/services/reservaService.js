@@ -12,6 +12,9 @@ export const reservaService = {
   // Obtener todas las reservas del usuario autenticado
   getAll: () => axios.get(API_URL, { headers: getAuthHeader() }),
   
+  // Obtener todas las reservas (ADMIN)
+  getAllAdmin: () => axios.get(`${API_URL}/todo`, { headers: getAuthHeader() }),
+  
   // Obtener próximas reservas
   getProximas: (limite = 5) => axios.get(`${API_URL}/proximas?limite=${limite}`, { headers: getAuthHeader() }),
   
@@ -38,7 +41,15 @@ export const reservaService = {
   
   // Cancelar reserva
   cancelar: (id) => axios.patch(`${API_URL}/${id}/cancelar`, {}, { headers: getAuthHeader() }),
+
+  // Confirmar reserva (admin)
+  confirmar: (id) => axios.patch(`${API_URL}/${id}/confirmar`, {}, { headers: getAuthHeader() }),
+  
+  // Rechazar reserva (admin)
+  rechazar: (id, motivo) => axios.patch(`${API_URL}/${id}/rechazar`, { motivo }, { headers: getAuthHeader() }),
   
   // Eliminar (soft delete) reserva
-  delete: (id) => axios.delete(`${API_URL}/${id}`, { headers: getAuthHeader() })
+  delete: (id) => axios.delete(`${API_URL}/${id}`, { headers: getAuthHeader() }),
+
+  hardDelete: (id) => axios.delete(`${API_URL}/${id}/hard`, { headers: getAuthHeader() })
 };
