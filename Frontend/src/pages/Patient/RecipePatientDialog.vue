@@ -288,73 +288,6 @@
         </q-card-actions>
       </q-form>
     </q-card>
-
-    <!-- PDF Template (hidden) -->
-    <div id="recipe-pdf-template" style="position: absolute; left: -9999px; width: 210mm; background: white;">
-      <div style="padding: 20px; font-family: Arial, sans-serif; font-size: 12px;">
-        <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px;">
-          <h2 style="margin: 0; color: #2c3e50;">RECETA MÉDICA ODONTOLÓGICA</h2>
-          <p style="margin: 5px 0; font-size: 10px;">{{ clinicaInfo.nombre }}</p>
-          <p style="margin: 0; font-size: 10px;">{{ clinicaInfo.direccion }} - Tel: {{ clinicaInfo.telefono }}</p>
-        </div>
-
-        <div style="margin-bottom: 15px;">
-          <table style="width: 100%; font-size: 11px;">
-            <tr>
-              <td style="width: 50%;">
-                <strong>Paciente:</strong> {{ pacienteNombre }}<br>
-                <strong>C.I.:</strong> {{ currentPatient?.ci }}<br>
-                <strong>Edad:</strong> {{ calcularEdad(currentPatient?.fecha_nacimiento) }} años
-              </td>
-              <td style="width: 50%; text-align: right;">
-                <strong>Fecha:</strong> {{ formatDate(savedRecipe?.fecha) }}<br>
-                <strong>Válida hasta:</strong> {{ formatDate(savedRecipe?.valida_hasta) }}
-              </td>
-            </tr>
-          </table>
-        </div>
-
-        <div v-if="currentPatient?.alertas_clinicas" style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px; margin-bottom: 15px;">
-          <strong style="color: #856404;">⚠ ALERTA CLÍNICA:</strong>
-          <span style="color: #856404;">{{ currentPatient.alertas_clinicas }}</span>
-        </div>
-
-        <div style="margin-bottom: 15px;">
-          <h3 style="margin: 0 0 8px 0; font-size: 13px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">DIAGNÓSTICO</h3>
-          <p style="margin: 0;">{{ savedRecipe?.diagnostico }}</p>
-        </div>
-
-        <div style="margin-bottom: 15px;">
-          <h3 style="margin: 0 0 8px 0; font-size: 13px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">MEDICAMENTOS</h3>
-          <div v-for="(med, idx) in savedRecipe?.medicamentos" :key="idx" style="margin-bottom: 10px; padding: 8px; background: #f8f9fa; border-left: 3px solid #667eea;">
-            <div style="font-weight: bold; margin-bottom: 3px;">{{ idx + 1 }}. {{ med.nombre }}</div>
-            <div style="font-size: 11px;">
-              <strong>Dosis:</strong> {{ med.dosis }}<br>
-              <strong>Duración:</strong> {{ med.duracion }}
-              <span v-if="med.indicaciones"><br><strong>Indicaciones:</strong> {{ med.indicaciones }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="savedRecipe?.indicaciones_generales" style="margin-bottom: 15px;">
-          <h3 style="margin: 0 0 8px 0; font-size: 13px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">INDICACIONES GENERALES</h3>
-          <p style="margin: 0; font-size: 11px;">{{ savedRecipe.indicaciones_generales }}</p>
-        </div>
-
-        <div v-if="savedRecipe?.observaciones" style="margin-bottom: 15px;">
-          <h3 style="margin: 0 0 8px 0; font-size: 13px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">OBSERVACIONES</h3>
-          <p style="margin: 0; font-size: 11px;">{{ savedRecipe.observaciones }}</p>
-        </div>
-
-        <div style="margin-top: 30px; text-align: center;">
-          <div style="border-top: 1px solid #333; display: inline-block; padding-top: 5px; min-width: 200px;">
-            <strong>{{ selectedDentistName }}</strong><br>
-            <span style="font-size: 10px;">Odontólogo(a)</span>
-            <span v-if="selectedDentistColegiatura" style="font-size: 10px;"><br>Reg. {{ selectedDentistColegiatura }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
   </q-dialog>
 </template>
 
@@ -364,8 +297,8 @@ import { useQuasar } from 'quasar'
 import { usePacienteStore } from 'stores/pacienteStore'
 import { useDentistaStore } from 'stores/dentistaStore'
 import { useRecetaStore } from 'stores/recetaStore'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 export default {
   name: 'RecipePatientDialog',
@@ -392,9 +325,11 @@ export default {
     const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
     
     const clinicaInfo = ref({
-      nombre: 'Clínica Dental',
-      direccion: 'Av. Principal #123',
-      telefono: '(591) 12345678'
+      nombre: 'CLÍNICA DENTAL KIRU',
+      direccion: 'Av. Principal #123, La Paz',
+      telefono: '(591) 2-1234567',
+      email: 'info@clinicakiru.com',
+      web: 'www.clinicakiru.com'
     })
 
     const form = ref({
@@ -453,21 +388,23 @@ export default {
       })
     })
 
+    const selectedDentist = computed(() => {
+      return dentistaStore.dentistas.find(d => d.id === form.value.dentista_id)
+    })
+
     const selectedDentistName = computed(() => {
-      const dentist = dentistaStore.dentistas.find(d => d.id === form.value.dentista_id)
-      if (!dentist) return 'Dentista'
+      if (!selectedDentist.value) return 'Dentista'
       
       return [
-        dentist.nombre,
-        dentist.segundo_nombre,
-        dentist.apellido_paterno,
-        dentist.apellido_materno
+        selectedDentist.value.nombre,
+        selectedDentist.value.segundo_nombre,
+        selectedDentist.value.apellido_paterno,
+        selectedDentist.value.apellido_materno
       ].filter(Boolean).join(' ')
     })
 
     const selectedDentistColegiatura = computed(() => {
-      const dentist = dentistaStore.dentistas.find(d => d.id === form.value.dentista_id)
-      return dentist?.colegiatura || null
+      return selectedDentist.value?.colegiatura || null
     })
 
     // Methods
@@ -485,7 +422,11 @@ export default {
 
     const formatDate = (date) => {
       if (!date) return ''
-      return new Date(date).toLocaleDateString('es-ES')
+      return new Date(date).toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      })
     }
 
     const addMedicine = () => {
@@ -582,27 +523,287 @@ export default {
       }
 
       try {
-        const element = document.getElementById('recipe-pdf-template')
+        const doc = new jsPDF('p', 'mm', 'a4')
+        const pageWidth = doc.internal.pageSize.getWidth()
+        const pageHeight = doc.internal.pageSize.getHeight()
+        const margin = 15
+        let yPosition = margin
+
+        // ========================================
+        // ENCABEZADO CON BRANDING
+        // ========================================
+        doc.setFillColor(102, 126, 234)
+        doc.rect(0, 0, pageWidth, 50, 'F')
+
+        // Logo/Icono
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(40)
+        doc.text('🦷', pageWidth / 2 - 8, 22)
+
+        // Nombre de la clínica
+        doc.setFontSize(22)
+        doc.setFont('helvetica', 'bold')
+        doc.text(clinicaInfo.value.nombre, pageWidth / 2, 32, { align: 'center' })
+
+        // Subtítulo
+        doc.setFontSize(12)
+        doc.setFont('helvetica', 'normal')
+        doc.text('RECETA MÉDICA ODONTOLÓGICA', pageWidth / 2, 40, { align: 'center' })
+
+        // Información de contacto
+        doc.setFontSize(8)
+        doc.text(clinicaInfo.value.direccion, pageWidth / 2, 45, { align: 'center' })
+        doc.text(`Tel: ${clinicaInfo.value.telefono} | ${clinicaInfo.value.email}`, pageWidth / 2, 48, { align: 'center' })
+
+        yPosition = 60
+
+        // ========================================
+        // INFORMACIÓN DEL PACIENTE Y FECHAS
+        // ========================================
+        doc.setFillColor(248, 249, 250)
+        doc.roundedRect(margin, yPosition, pageWidth - 2 * margin, 28, 3, 3, 'F')
+
+        doc.setTextColor(0, 0, 0)
+        doc.setFontSize(10)
+        doc.setFont('helvetica', 'bold')
         
-        const canvas = await html2canvas(element, {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#ffffff'
+        // Columna izquierda - Datos del paciente
+        doc.text('PACIENTE:', margin + 5, yPosition + 7)
+        doc.setFont('helvetica', 'normal')
+        doc.text(pacienteNombre.value, margin + 30, yPosition + 7)
+
+        doc.setFont('helvetica', 'bold')
+        doc.text('C.I.:', margin + 5, yPosition + 14)
+        doc.setFont('helvetica', 'normal')
+        doc.text(currentPatient.value.ci, margin + 30, yPosition + 14)
+
+        doc.setFont('helvetica', 'bold')
+        doc.text('EDAD:', margin + 5, yPosition + 21)
+        doc.setFont('helvetica', 'normal')
+        doc.text(`${calcularEdad(currentPatient.value.fecha_nacimiento)} años`, margin + 30, yPosition + 21)
+
+        // Columna derecha - Fechas
+        doc.setFont('helvetica', 'bold')
+        doc.text('FECHA:', pageWidth - margin - 60, yPosition + 7, { align: 'right' })
+        doc.setFont('helvetica', 'normal')
+        doc.text(formatDate(savedRecipe.value.fecha), pageWidth - margin - 5, yPosition + 7, { align: 'right' })
+
+        doc.setFont('helvetica', 'bold')
+        doc.text('VÁLIDA HASTA:', pageWidth - margin - 60, yPosition + 14, { align: 'right' })
+        doc.setFont('helvetica', 'normal')
+        doc.text(formatDate(savedRecipe.value.valida_hasta), pageWidth - margin - 5, yPosition + 14, { align: 'right' })
+
+        yPosition += 35
+
+        // ========================================
+        // ALERTA CLÍNICA (si existe)
+        // ========================================
+        if (hasClinicalAlerts.value) {
+          doc.setFillColor(255, 243, 205)
+          doc.setDrawColor(255, 193, 7)
+          doc.setLineWidth(0.5)
+          doc.roundedRect(margin, yPosition, pageWidth - 2 * margin, 15, 3, 3, 'FD')
+
+          doc.setTextColor(133, 100, 4)
+          doc.setFontSize(10)
+          doc.setFont('helvetica', 'bold')
+          doc.text('⚠ ALERTA CLÍNICA:', margin + 5, yPosition + 7)
+          
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(9)
+          const alertText = doc.splitTextToSize(
+            currentPatient.value.alertas_clinicas,
+            pageWidth - 2 * margin - 45
+          )
+          doc.text(alertText, margin + 45, yPosition + 7)
+
+          yPosition += 20
+          doc.setTextColor(0, 0, 0)
+        }
+
+        // ========================================
+        // DIAGNÓSTICO
+        // ========================================
+        doc.setFillColor(102, 126, 234)
+        doc.rect(margin, yPosition, pageWidth - 2 * margin, 8, 'F')
+        
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        doc.text('📋 DIAGNÓSTICO', margin + 3, yPosition + 5.5)
+
+        yPosition += 10
+
+        doc.setTextColor(0, 0, 0)
+        doc.setFontSize(10)
+        doc.setFont('helvetica', 'normal')
+        const diagnosticoText = doc.splitTextToSize(
+          savedRecipe.value.diagnostico,
+          pageWidth - 2 * margin - 6
+        )
+        doc.text(diagnosticoText, margin + 3, yPosition + 5)
+        yPosition += diagnosticoText.length * 5 + 10
+
+        // ========================================
+        // MEDICAMENTOS - TABLA
+        // ========================================
+        doc.setFillColor(102, 126, 234)
+        doc.rect(margin, yPosition, pageWidth - 2 * margin, 8, 'F')
+        
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        doc.text('💊 MEDICAMENTOS RECETADOS', margin + 3, yPosition + 5.5)
+
+        yPosition += 10
+
+        const medicamentosData = savedRecipe.value.medicamentos.map((med, idx) => {
+          const indicaciones = med.indicaciones || 'Sin indicaciones especiales'
+          return [
+            (idx + 1).toString(),
+            med.nombre,
+            med.dosis,
+            med.duracion,
+            indicaciones
+          ]
         })
 
-        const imgData = canvas.toDataURL('image/png')
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4'
+        autoTable(doc, {
+          startY: yPosition,
+          head: [['#', 'Medicamento', 'Dosis', 'Duración', 'Indicaciones']],
+          body: medicamentosData,
+          theme: 'grid',
+          headStyles: {
+            fillColor: [102, 126, 234],
+            textColor: 255,
+            fontSize: 10,
+            fontStyle: 'bold',
+            halign: 'center'
+          },
+          bodyStyles: {
+            fontSize: 9,
+            textColor: [44, 62, 80]
+          },
+          columnStyles: {
+            0: { halign: 'center', cellWidth: 10 },
+            1: { halign: 'left', cellWidth: 45 },
+            2: { halign: 'left', cellWidth: 40 },
+            3: { halign: 'center', cellWidth: 25 },
+            4: { halign: 'left', cellWidth: 'auto' }
+          },
+          alternateRowStyles: {
+            fillColor: [248, 249, 250]
+          },
+          margin: { left: margin, right: margin }
         })
 
-        const imgWidth = 210
-        const imgHeight = (canvas.height * imgWidth) / canvas.width
-        
-        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
-        pdf.save(`receta_${currentPatient.value.ci}_${today}.pdf`)
+        yPosition = doc.lastAutoTable.finalY + 10
+
+        // ========================================
+        // INDICACIONES GENERALES
+        // ========================================
+        if (savedRecipe.value.indicaciones_generales) {
+          doc.setFillColor(118, 75, 162)
+          doc.rect(margin, yPosition, pageWidth - 2 * margin, 8, 'F')
+          
+          doc.setTextColor(255, 255, 255)
+          doc.setFontSize(11)
+          doc.setFont('helvetica', 'bold')
+          doc.text('📌 INDICACIONES GENERALES', margin + 3, yPosition + 5.5)
+
+          yPosition += 10
+
+          doc.setTextColor(0, 0, 0)
+          doc.setFontSize(9)
+          doc.setFont('helvetica', 'normal')
+          const indicacionesText = doc.splitTextToSize(
+            savedRecipe.value.indicaciones_generales,
+            pageWidth - 2 * margin - 6
+          )
+          doc.text(indicacionesText, margin + 3, yPosition + 5)
+          yPosition += indicacionesText.length * 4 + 10
+        }
+
+        // ========================================
+        // OBSERVACIONES
+        // ========================================
+        if (savedRecipe.value.observaciones) {
+          doc.setFillColor(52, 152, 219)
+          doc.rect(margin, yPosition, pageWidth - 2 * margin, 8, 'F')
+          
+          doc.setTextColor(255, 255, 255)
+          doc.setFontSize(11)
+          doc.setFont('helvetica', 'bold')
+          doc.text('📝 OBSERVACIONES', margin + 3, yPosition + 5.5)
+
+          yPosition += 10
+
+          doc.setTextColor(0, 0, 0)
+          doc.setFontSize(9)
+          doc.setFont('helvetica', 'normal')
+          const observacionesText = doc.splitTextToSize(
+            savedRecipe.value.observaciones,
+            pageWidth - 2 * margin - 6
+          )
+          doc.text(observacionesText, margin + 3, yPosition + 5)
+          yPosition += observacionesText.length * 4 + 10
+        }
+
+        // ========================================
+        // FIRMA DEL ODONTÓLOGO
+        // ========================================
+        yPosition = Math.max(yPosition, pageHeight - 60)
+
+        doc.setDrawColor(102, 126, 234)
+        doc.setLineWidth(0.5)
+        doc.line(pageWidth / 2 - 40, yPosition + 20, pageWidth / 2 + 40, yPosition + 20)
+
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(44, 62, 80)
+        doc.text(selectedDentistName.value, pageWidth / 2, yPosition + 26, { align: 'center' })
+
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(127, 140, 141)
+        doc.text('Odontólogo(a)', pageWidth / 2, yPosition + 31, { align: 'center' })
+
+        if (selectedDentistColegiatura.value) {
+          doc.text(`Reg. Prof. ${selectedDentistColegiatura.value}`, pageWidth / 2, yPosition + 36, { align: 'center' })
+        }
+
+        // ========================================
+        // FOOTER
+        // ========================================
+        doc.setFillColor(248, 249, 250)
+        doc.rect(0, pageHeight - 20, pageWidth, 20, 'F')
+
+        doc.setFontSize(7)
+        doc.setTextColor(127, 140, 141)
+        doc.setFont('helvetica', 'italic')
+        doc.text(
+          'Esta receta médica es válida únicamente hasta la fecha indicada. No automedicarse.',
+          pageWidth / 2,
+          pageHeight - 12,
+          { align: 'center' }
+        )
+        doc.text(
+          `${clinicaInfo.value.web} | ${clinicaInfo.value.telefono}`,
+          pageWidth / 2,
+          pageHeight - 8,
+          { align: 'center' }
+        )
+
+        // Línea decorativa
+        doc.setDrawColor(102, 126, 234)
+        doc.setLineWidth(1)
+        doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15)
+
+        // ========================================
+        // GUARDAR PDF
+        // ========================================
+        const nombreArchivo = `Receta_${currentPatient.value.ci}_${today}.pdf`
+        doc.save(nombreArchivo)
 
         $q.notify({
           type: 'positive',

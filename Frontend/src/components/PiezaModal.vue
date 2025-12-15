@@ -240,10 +240,8 @@
     <PagoStripeModal
       v-model="showPagoModal"
       :pieza="datosPiezaPago"
-      :monto-pendiente="Number(formPieza.precio || 0)"
       @pago-exitoso="onPagoExitoso"
     />
-
     
   </q-dialog>
 </template>
